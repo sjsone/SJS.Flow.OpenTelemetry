@@ -133,6 +133,3 @@ _`Configuration/Settings.yaml`_
 | `setup.default.uri`               | string  |         | OTLP endpoint URI                                    |
 | `setup.default.service.name`      | string  |         | Service name for telemetry data                      |
 | `setup.default.service.version`   | string  |         | Service version for telemetry data                   |
-
-> [!NOTE]
-> This package uses the official [OpenTelemetry PHP SDK](https://github.com/open-telemetry/opentelemetry-php) and supports OTLP export to compatible backends like Grafana Tempo, Jaeger, and OpenTelemetry Collector.
