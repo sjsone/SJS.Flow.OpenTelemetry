@@ -1,0 +1,19 @@
+Neos:
+  Flow:
+    log:
+      psr3:
+        'Neos\Flow\Log\PsrLoggerFactory':
+          systemLogger:
+            default:
+              class: SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend
+              options:
+                severityThreshold: "%LOG_NOTICE%"
+                attributes:
+                  logger: "systemLogger"
+          securityLogger:
+            default:
+              class: SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend
+              options:
+                severityThreshold: "%LOG_NOTICE%"
+                attributes:
+                  logger: "securityLogger"

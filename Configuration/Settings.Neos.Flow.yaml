@@ -1,0 +1,7 @@
+Neos:
+  Flow:
+    http:
+      middlewares:
+        'httpResponseStatus':
+          position: 'end 50'
+          middleware: 'SJS\Flow\OpenTelemetry\Middleware\HttpResponseStatusMiddleware'

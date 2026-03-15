@@ -1,0 +1,17 @@
+SJS:
+  Flow:
+    OpenTelemetry:
+      builtInAspect:
+        enableAdvice:
+          commandController: true
+          actionController: true
+          viewInterfaceRender: true
+          repository: true
+          fusionCacheEvents: true
+      setup:
+        default:
+          class: SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup
+          uri: "%env:OTEL_EXPORTER_OTLP_ENDPOINT%"
+          service:
+            name: "%env:OTEL_SERVICE_NAME%"
+            version: "%env:OTEL_SERVICE_VERSION%"

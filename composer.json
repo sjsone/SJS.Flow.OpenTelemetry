@@ -1,0 +1,23 @@
+{
+    "name": "sjs/flow-opentelemetry",
+    "type": "neos-package",
+    "description": "",
+    "require": {
+        "neos/flow": "^9.0",
+        "guzzlehttp/guzzle": "^7.0",
+        "open-telemetry/sdk": "^1.13",
+        "open-telemetry/api": "^1.8",
+        "open-telemetry/sem-conv": "^1.38",
+        "open-telemetry/exporter-otlp": "^1.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "SJS\\Flow\\OpenTelemetry\\": "Classes"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SJS\\Flow\\OpenTelemetry\\Tests\\": "Tests"
+        }
+    }
+}
