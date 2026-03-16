@@ -21,6 +21,58 @@ Just add these environment variables and you are good to go:
 - **`OTEL_SERVICE_NAME`**: The name of your service
 - **`OTEL_SERVICE_VERSION`**: The version of your service
 
+### SigNoz
+
+A fast way to get anything out of this package is to use [SigNoz](https://signoz.io/).
+For bigger setups Grafana with its extensions is still a better choice but for smaller setups and playing around SigNoz is sufficient.
+
+[https://signoz.io/docs/install/docker/#install-signoz-using-docker-compose](Official Guide to Install SigNoz using docker compose)
+
+### OpenTelemetry Collector
+
+For production environments, it is recommended to use the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) (`otelcol`) as a central telemetry processing layer for each project.
+
+**Configure the Collector** (`otelcol-config.yaml`):
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp_http/signoz:
+    endpoint: http://signoz:4318
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    metrics:
+      level: basic
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/signoz]
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/signoz]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/signoz]
+```
+
+For more configuration examples, see the [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/configuration/).
+
 ## Functionality
 
 ### Logging Backend
