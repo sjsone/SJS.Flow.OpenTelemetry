@@ -258,6 +258,7 @@ class OpenTelemetrySetup
             ["scope" => $scope, "span" => $span] = $scopeWithSpan;
 
             if ($span->isRecording()) {
+                // TODO: make event `span.forcefullyClosed` configurable
                 $span->addEvent("span.forcefullyClosed");
 
                 $detachResult = $scope->detach();
