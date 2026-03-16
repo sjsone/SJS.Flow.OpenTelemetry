@@ -32,6 +32,10 @@ For bigger setups Grafana with its extensions is still a better choice but for s
 
 For production environments, it is recommended to use the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) (`otelcol`) as a central telemetry processing layer for each project.
 
+Each log, trace/span and metric is sent and may take some time. Sending all of that synchronously over the network can impact performance.
+The OpenTelemetry Collector is installed ideally locally next to the project or with a  low-latency high-speed connection in-between.
+It acts as a buffer that sends every received data via the specified exporter.
+
 **Configure the Collector** (`otelcol-config.yaml`):
 
 ```yaml
