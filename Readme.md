@@ -26,7 +26,7 @@ Just add these environment variables and you are good to go:
 A fast way to get anything out of this package is to use [SigNoz](https://signoz.io/).
 For bigger setups Grafana with its extensions is still a better choice but for smaller setups and playing around SigNoz is sufficient.
 
-[https://signoz.io/docs/install/docker/#install-signoz-using-docker-compose](Official Guide to Install SigNoz using docker compose)
+[Official Guide to Install SigNoz using docker compose](https://signoz.io/docs/install/docker/#install-signoz-using-docker-compose)
 
 ### OpenTelemetry Collector
 
