@@ -49,14 +49,9 @@ class OpenTelemetrySetup
     protected SpanInterface $rootSpan;
 
     /**
-     * @var array<SpanInterface>
+     * @var array<array{scope: ScopeInterface, span: SpanInterface}>
      */
-    protected array $spans;
-
-    /**
-     * @var array<ScopeInterface>
-     */
-    protected array $scopes = [];
+    protected array $scopesWithSpans = [];
 
     public readonly TracerInterface $tracer;
 
@@ -189,10 +184,12 @@ class OpenTelemetrySetup
         $this->rootSpan = $spanBuilder->startSpan();
         $this->rootSpan->setAttributes($this->additionalAttributes);
 
-        $this->scopes[] = $this->rootSpan->activate();
-        $this->spans[] = $this->rootSpan;
+        $this->scopesWithSpans[] = [
+            "scope" => $this->rootSpan->activate(),
+            "span" => $this->rootSpan
+        ];
 
-        register_shutdown_function($this->endRootSpan(...));
+        register_shutdown_function($this->shutdown(...));
     }
 
     public function getRootSpan(): SpanInterface
@@ -220,20 +217,28 @@ class OpenTelemetrySetup
             $span->setAttributes(attributes: $attributes);
         }
 
-        $this->scopes[] = $span->activate();
-
-        $this->spans[] = $span;
+        $this->scopesWithSpans[] = [
+            "scope" => $span->activate(),
+            "span" => $span
+        ];
 
         return $span;
     }
 
     public function endSpan(SpanInterface $spanToEnd)
     {
-        $scope = array_pop($this->scopes);
-        if ($scope !== null) {
-            $scope->detach();
+        $scopeWithSpan = array_pop($this->scopesWithSpans);
+        if ($scopeWithSpan === null) {
+            throw new \Exception("Could not end span.\nEvery span in the stack already ended.");
         }
 
+        ["scope" => $scope, "span" => $span] = $scopeWithSpan;
+        if ($span !== $spanToEnd) {
+            array_push($scopeWithSpan, $this->scopesWithSpans);
+            throw new \Exception("Could not end span.\nSupplied span to end is not next in stack");
+        }
+
+        $scope->detach();
         $spanToEnd->end();
     }
 
@@ -243,5 +248,25 @@ class OpenTelemetrySetup
         $this->endSpan($this->rootSpan);
         // Flush metrics to ensure they are exported at the end of the request
         $this->meterProvider->forceFlush();
+    }
+
+    protected function shutdown(): void
+    {
+        $runAway = \count($this->scopesWithSpans) + 10;
+        while ($runAway-- && \count($this->scopesWithSpans) > 1) {
+            $scopeWithSpan = array_pop($this->scopesWithSpans);
+            ["scope" => $scope, "span" => $span] = $scopeWithSpan;
+
+            if ($span->isRecording()) {
+                $span->addEvent("span.forcefullyClosed");
+
+                $detachResult = $scope->detach();
+                if ($detachResult !== ScopeInterface::DETACHED) {
+                    $span->end();
+                }
+            }
+        }
+
+        $this->endRootSpan();
     }
 }
