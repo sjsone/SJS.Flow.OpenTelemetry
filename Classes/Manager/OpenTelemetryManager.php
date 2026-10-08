@@ -42,9 +42,6 @@ class OpenTelemetryManager
     public static function createSetup(string $name): OpenTelemetrySetup
     {
         $configurationManager = self::$bootstrap->getEarlyInstance(ConfigurationManager::class);
-        if (!($configurationManager instanceof ConfigurationManager)) {
-            throw new \Exception("ConfigurationManager not yet available.\nIt is probably too early in the bootstrap process.");
-        }
 
         $configurationPath = "SJS.Flow.OpenTelemetry.setup.$name";
         $configurationArray = $configurationManager->getConfiguration(ConfigurationManager::CONFIGURATION_TYPE_SETTINGS, $configurationPath);

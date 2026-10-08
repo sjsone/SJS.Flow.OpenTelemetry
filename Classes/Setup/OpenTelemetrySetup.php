@@ -42,7 +42,7 @@ use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
 use Neos\Flow\Annotations as Flow;
-
+use OpenTelemetry\API\Trace\SpanKind;
 
 class OpenTelemetrySetup
 {
@@ -202,7 +202,7 @@ class OpenTelemetrySetup
      * @param iterable<non-empty-string, bool|int|float|string|array|null> $attributes
      * @psalm-param SpanKind::KIND_* $spanKind
      */
-    public function startNewSpanOfKind(string $name, int $spanKind, ?array $attributes = null)
+    public function startNewSpanOfKind(string $name, int $spanKind, ?iterable $attributes = null)
     {
         if (empty($name)) {
             throw new \Exception("span requires a non-empty-string");
