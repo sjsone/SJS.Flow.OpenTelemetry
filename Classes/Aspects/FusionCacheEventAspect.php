@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Aspects;
@@ -25,15 +26,16 @@ class FusionCacheEventAspect
             $fusionPath = $arguments['evaluateContext']['fusionPath'] ?? 'unknown';
         }
 
-        /** @var array{bool, mixed} $result */
         $result = $joinPoint->getAdviceChain()->proceed($joinPoint);
 
-        $cacheHit = $result[0] ?? false;
+        if (isset($result[0]) && is_bool($result[0])) {
+            $cacheHit = $result[0];
 
-        if ($cacheHit) {
-            $this->fusionCacheMetrics->recordHit($fusionPath);
-        } else {
-            $this->fusionCacheMetrics->recordMiss($fusionPath);
+            if ($cacheHit) {
+                $this->fusionCacheMetrics->recordHit($fusionPath);
+            } else {
+                $this->fusionCacheMetrics->recordMiss($fusionPath);
+            }
         }
 
         return $result;

@@ -1,10 +1,11 @@
 <?php
+
 namespace SJS\Flow\OpenTelemetry\Command;
 
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Cli\CommandController;
-use Psr\Log\LoggerInterface;
 use Neos\Flow\Log\Utility\LogEnvironment;
+use Psr\Log\LoggerInterface;
 
 class TestCommandController extends CommandController
 {

@@ -1,4 +1,5 @@
 <?php
+
 namespace SJS\Flow\OpenTelemetry;
 
 use Neos\Flow\Core\Booting\Sequence;
@@ -9,7 +10,6 @@ use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
 
 class Package extends BasePackage
 {
-
     /**
      * {@inheritdoc}
      */

@@ -4,20 +4,29 @@ declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Setup;
 
-use Neos\Behat\Tests\Behat\FlowContextTrait;
 use Neos\Flow\Core\ApplicationContext;
+use OpenTelemetry\API\Logs\LoggerInterface;
+use OpenTelemetry\API\Metrics\MeterInterface;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
+use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\Contrib\Otlp\ContentTypes;
+use OpenTelemetry\Contrib\Otlp\LogsExporter;
 use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
 use OpenTelemetry\SDK\Common\Export\TransportInterface;
 use OpenTelemetry\SDK\Common\Instrumentation\InstrumentationScopeFactory;
+use OpenTelemetry\SDK\Logs\LoggerProvider;
+use OpenTelemetry\SDK\Logs\LoggerProviderInterface;
+use OpenTelemetry\SDK\Logs\LogRecordExporterInterface;
 use OpenTelemetry\SDK\Logs\LogRecordLimitsBuilder;
 use OpenTelemetry\SDK\Logs\Processor\SimpleLogRecordProcessor;
+use OpenTelemetry\SDK\Metrics\MeterProvider;
+use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
+use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Sdk;
@@ -26,23 +35,11 @@ use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
 use OpenTelemetry\SDK\Trace\SpanExporterInterface;
 use OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor;
 use OpenTelemetry\SDK\Trace\TracerProvider;
-use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
 use OpenTelemetry\SemConv\Attributes\HttpAttributes;
+use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
 use OpenTelemetry\SemConv\Attributes\UrlAttributes;
 use OpenTelemetry\SemConv\Incubating\Attributes\DeploymentIncubatingAttributes;
-use OpenTelemetry\SemConv\Incubating\Attributes\ServiceIncubatingAttributes;
-use OpenTelemetry\API\Logs\LoggerInterface;
-use OpenTelemetry\API\Metrics\MeterInterface;
-use OpenTelemetry\Contrib\Otlp\LogsExporter;
-use OpenTelemetry\SDK\Logs\LoggerProvider;
-use OpenTelemetry\SDK\Logs\LoggerProviderInterface;
-use OpenTelemetry\SDK\Logs\LogRecordExporterInterface;
-use OpenTelemetry\SDK\Metrics\MeterProvider;
-use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
-use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
-use Neos\Flow\Annotations as Flow;
-
 
 class OpenTelemetrySetup
 {
@@ -202,7 +199,7 @@ class OpenTelemetrySetup
      * @param iterable<non-empty-string, bool|int|float|string|array|null> $attributes
      * @psalm-param SpanKind::KIND_* $spanKind
      */
-    public function startNewSpanOfKind(string $name, int $spanKind, ?array $attributes = null)
+    public function startNewSpanOfKind(string $name, int $spanKind, ?iterable $attributes = null)
     {
         if (empty($name)) {
             throw new \Exception("span requires a non-empty-string");

@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Manager;
 
-
+use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Core\Bootstrap;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup;
-use Neos\Flow\Annotations as Flow;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
-
 
 #[Flow\Scope("singleton")]
 class OpenTelemetryManager
@@ -42,9 +40,6 @@ class OpenTelemetryManager
     public static function createSetup(string $name): OpenTelemetrySetup
     {
         $configurationManager = self::$bootstrap->getEarlyInstance(ConfigurationManager::class);
-        if (!($configurationManager instanceof ConfigurationManager)) {
-            throw new \Exception("ConfigurationManager not yet available.\nIt is probably too early in the bootstrap process.");
-        }
 
         $configurationPath = "SJS.Flow.OpenTelemetry.setup.$name";
         $configurationArray = $configurationManager->getConfiguration(ConfigurationManager::CONFIGURATION_TYPE_SETTINGS, $configurationPath);
