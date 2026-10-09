@@ -6,9 +6,11 @@ namespace SJS\Flow\OpenTelemetry\Setup;
 
 use Neos\Behat\Tests\Behat\FlowContextTrait;
 use Neos\Flow\Core\ApplicationContext;
+use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\TracerInterface;
+use OpenTelemetry\Context\Propagation\ArrayAccessGetterSetter;
 use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
@@ -181,7 +183,25 @@ class OpenTelemetrySetup
     public function buildRootSpan()
     {
         // TODO: re-evaluate the concept of root-spans against best-practices
-        $spanBuilder = $this->tracer->spanBuilder("root")->setSpanKind(\OpenTelemetry\API\Trace\SpanKind::KIND_SERVER);
+        $spanBuilder = $this->tracer->spanBuilder("root")
+            ->setSpanKind(\OpenTelemetry\API\Trace\SpanKind::KIND_SERVER);
+
+        $relevantHeaders = array_combine(
+            TraceContextPropagator::FIELDS,
+            array_map(
+                fn (string $key) => $_SERVER['HTTP_' . strtoupper($key)] ?? '',
+                TraceContextPropagator::FIELDS
+            )
+        );
+
+        if ($relevantHeaders[TraceContextPropagator::TRACEPARENT]) {
+            $parentContext = Globals::propagator()->extract(
+                $relevantHeaders,
+                ArrayAccessGetterSetter::getInstance()
+            );
+
+            $spanBuilder->setParent($parentContext);
+        }
 
         $this->rootSpan = $spanBuilder->startSpan();
         $this->rootSpan->setAttributes($this->additionalAttributes);
