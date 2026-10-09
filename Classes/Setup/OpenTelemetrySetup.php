@@ -103,7 +103,7 @@ class OpenTelemetrySetup
 
         $this->loggerTransport = $this->createLoggerTransport($configuration);
         $logRecordExporter = $this->createLogRecordExporter($this->loggerTransport);
-        $loggerProvider = $this->createLoggerProvider($logRecordExporter);
+        $loggerProvider = $this->createLoggerProvider($logRecordExporter, $resource);
 
         $this->logger = $loggerProvider->getLogger('SJS.Flow.OpenTelemetry');
 
@@ -139,7 +139,7 @@ class OpenTelemetrySetup
         return new LogsExporter($transport);
     }
 
-    protected function createLoggerProvider(LogRecordExporterInterface $exporter): LoggerProviderInterface
+    protected function createLoggerProvider(LogRecordExporterInterface $exporter, ResourceInfo $resourceInfo): LoggerProviderInterface
     {
         $processor = new SimpleLogRecordProcessor(
             exporter: $exporter
@@ -153,7 +153,8 @@ class OpenTelemetrySetup
 
         return new LoggerProvider(
             processor: $processor,
-            instrumentationScopeFactory: $instrumentationScopeFactory
+            instrumentationScopeFactory: $instrumentationScopeFactory,
+            resource: $resourceInfo
         );
     }
 
