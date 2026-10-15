@@ -17,3 +17,6 @@ Neos:
                 severityThreshold: "%LOG_NOTICE%"
                 attributes:
                   logger: "securityLogger"
+
+      throwables:
+        storageClass: SJS\Flow\OpenTelemetry\Log\OpenTelemetryThrowableStorage
