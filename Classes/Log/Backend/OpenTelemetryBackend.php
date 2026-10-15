@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Log\Backend;
@@ -9,7 +10,6 @@ use OpenTelemetry\API\Logs\LogRecord;
 use OpenTelemetry\API\Logs\Severity;
 use OpenTelemetry\SemConv\Attributes\CodeAttributes;
 use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
-use Neos\Flow\Annotations as Flow;
 
 class OpenTelemetryBackend extends AbstractBackend
 {
@@ -43,7 +43,7 @@ class OpenTelemetryBackend extends AbstractBackend
 
     protected function buildLogRecord(string $message, int $severity = LOG_INFO, $additionalData = null, string|null $packageKey = null, string|null $className = null, string|null $methodName = null): LogRecord
     {
-        $record = new LogRecord;
+        $record = new LogRecord();
 
         $record->setBody($message);
 
@@ -51,7 +51,7 @@ class OpenTelemetryBackend extends AbstractBackend
         $record->setSeverityText($this->mapSeverityText($severity));
 
         foreach ($additionalData as $key => $value) {
-            // TODO: handle toString etc. 
+            // TODO: handle toString etc.
             if (\is_array($value) || \is_object($value)) {
                 continue;
             }

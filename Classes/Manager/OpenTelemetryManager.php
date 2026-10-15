@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Manager;
 
-
+use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Core\Bootstrap;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup;
-use Neos\Flow\Annotations as Flow;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
-
 
 #[Flow\Scope("singleton")]
 class OpenTelemetryManager

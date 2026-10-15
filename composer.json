@@ -11,7 +11,8 @@
         "open-telemetry/exporter-otlp": "^1.4"
     },
     "require-dev": {
-        "phpstan/phpstan": "^2.0"
+        "phpstan/phpstan": "^2.0",
+        "friendsofphp/php-cs-fixer": "^3.95"
     },
     "autoload": {
         "psr-4": {
@@ -24,6 +25,8 @@
         }
     },
     "scripts": {
-        "lint:phpstan": "../../../bin/phpstan analyse -v"
+        "lint:php-cs-fixer": "../../../bin/php-cs-fixer check -v",
+        "lint:phpstan": "../../../bin/phpstan analyse -v",
+        "fix:php-cs-fixer": "../../../bin/php-cs-fixer fix"
     }
 }

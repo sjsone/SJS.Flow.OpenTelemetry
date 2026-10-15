@@ -1,12 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Aspects;
 
 use Neos\Flow\Aop\JoinPointInterface;
-use Neos\Flow\Annotations as Flow;
 use OpenTelemetry\API\Trace\SpanKind;
-
 use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
 
 trait SpanAspectTrait

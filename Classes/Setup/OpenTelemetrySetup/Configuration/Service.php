@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
 
 use Neos\Flow\Annotations as Flow;
@@ -12,7 +13,6 @@ class Service
         public readonly string $name,
         public readonly string $version,
     ) {
-
     }
 
     public static function fromArray(array $source): self
