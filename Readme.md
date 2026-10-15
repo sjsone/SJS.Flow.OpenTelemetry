@@ -13,7 +13,7 @@
 ## Quick Start
 
 > [!IMPORTANT]
-> This package integrates OpenTelemetry into Neos Flow by providing a pre-configured tracer, logger, meter, and automatic tracing aspects.
+> This package integrates OpenTelemetry into Neos Flow by providing a pre-configured tracer, logger, meter and automatic tracing aspects.
 
 Just add these environment variables and you are good to go:
 
@@ -79,9 +79,19 @@ For more configuration examples, see the [OpenTelemetry Collector documentation]
 
 ## Functionality
 
+HTTP requests and CLI commands create entry spans. HTTP spans record response status and errors. CLI spans record exit codes.
+Incoming HTTP trace headers and CLI `TRACEPARENT`/`TRACESTATE` values continue an existing trace. Flow subprocesses inherit the active CLI trace context.
+
+For HTTP requests, `server.address` identifies the request domain in traces, logs and metrics.
+
 ### Logging Backend
 
 A logging backend that sends logs to OpenTelemetry.
+
+Additional data uses `additional.<key>` attributes.
+`Stringable` objects become strings.
+Arrays and `JsonSerializable` values become JSON.
+Unsupported values are skipped.
 
 **Class:** `SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend`
 
@@ -122,19 +132,18 @@ Neos:
 
 Built-in AOP aspects that automatically create spans for common Flow operations.
 
-**Class:** `SJS\Flow\OpenTelemetry\Aspects\SpanAspect`
-
 #### Available Aspects
 
 | Aspect                 | Description                                                        |
 | ---------------------- | ------------------------------------------------------------------ |
+| commandDispatcher      | Creates the runtime CLI entry span                                 |
 | commandController      | Traces CommandController execution                                 |
 | actionController       | Traces ActionController execution                                  |
 | viewInterfaceRender    | Traces View rendering                                              |
-| repository             | Traces Repository methods (find*, count*, add*, remove*, etc.)     |
-| fusionCacheEvents      | Traces Fusion cache events (warmup, flush, etc.)                   |
+| repository             | Traces repository `find*` methods as internal spans                |
+| fusionCacheEvents      | Counts Fusion cache hits and misses                                |
 
-#### Example
+#### Built-In Aspect Configuration Example
 
 _`Configuration/Settings.yaml`_
 
@@ -144,6 +153,7 @@ SJS:
     OpenTelemetry:
       builtInAspect:
         enableAdvice:
+          commandDispatcher: true
           commandController: true
           actionController: true
           viewInterfaceRender: true
@@ -158,13 +168,13 @@ SJS:
             version: "%env:OTEL_SERVICE_VERSION%"
 ```
 
-### HTTP Response Middleware
+### HTTP Tracing Middleware
 
-Middleware that records HTTP response status as a metric.
+Middleware that creates the HTTP entry span and records response status and errors.
 
-**Class:** `SJS\Flow\OpenTelemetry\Middleware\HttpResponseStatusMiddleware`
+**Class:** `SJS\Flow\OpenTelemetry\Middleware\HttpTracingMiddleware`
 
-#### Example
+#### HTTP Tracing Example
 
 _`Configuration/Settings.Neos.Flow.yaml`_
 
@@ -173,9 +183,9 @@ Neos:
   Flow:
     http:
       middlewares:
-        'httpResponseStatus':
-          position: 'end 50'
-          middleware: 'SJS\Flow\OpenTelemetry\Middleware\HttpResponseStatusMiddleware'
+        'httpTracing':
+          position: 'start 200'
+          middleware: 'SJS\Flow\OpenTelemetry\Middleware\HttpTracingMiddleware'
 ```
 
 ### Configuration Reference
