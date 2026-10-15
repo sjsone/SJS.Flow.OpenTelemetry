@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace SJS\Flow\OpenTelemetry\Setup;
 
-use Neos\Behat\Tests\Behat\FlowContextTrait;
 use Neos\Flow\Core\ApplicationContext;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\Context\ScopeInterface;
+use OpenTelemetry\Context\ContextInterface;
 use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
@@ -27,10 +27,7 @@ use OpenTelemetry\SDK\Trace\SpanExporterInterface;
 use OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor;
 use OpenTelemetry\SDK\Trace\TracerProvider;
 use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
-use OpenTelemetry\SemConv\Attributes\HttpAttributes;
-use OpenTelemetry\SemConv\Attributes\UrlAttributes;
 use OpenTelemetry\SemConv\Incubating\Attributes\DeploymentIncubatingAttributes;
-use OpenTelemetry\SemConv\Incubating\Attributes\ServiceIncubatingAttributes;
 use OpenTelemetry\API\Logs\LoggerInterface;
 use OpenTelemetry\API\Metrics\MeterInterface;
 use OpenTelemetry\Contrib\Otlp\LogsExporter;
@@ -41,13 +38,12 @@ use OpenTelemetry\SDK\Metrics\MeterProvider;
 use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
+use SJS\Flow\OpenTelemetry\Tracing\TraceContext;
 use Neos\Flow\Annotations as Flow;
 use OpenTelemetry\API\Trace\SpanKind;
 
 class OpenTelemetrySetup
 {
-    protected SpanInterface $rootSpan;
-
     /**
      * @var array<array{scope: ScopeInterface, span: SpanInterface}>
      */
@@ -79,13 +75,6 @@ class OpenTelemetrySetup
             ...$this->additionalAttributes
         ];
 
-        if (isset($_SERVER['REQUEST_METHOD'])) {
-            $attributes[HttpAttributes::HTTP_REQUEST_METHOD] = $_SERVER['REQUEST_METHOD'];
-        }
-        if (isset($_SERVER['REQUEST_URI'])) {
-            $attributes[UrlAttributes::URL_FULL] = $_SERVER['REQUEST_URI'];
-        }
-
         $resource = ResourceInfoFactory::emptyResource()->merge(ResourceInfo::create(Attributes::create($attributes)));
 
         $this->spanTransport = $this->createSpanTransport($configuration);
@@ -113,11 +102,12 @@ class OpenTelemetrySetup
         Sdk::builder()
             ->setTracerProvider($tracerProvider)
             ->setLoggerProvider($loggerProvider)
+            ->setMeterProvider($this->meterProvider)
             ->setPropagator(TraceContextPropagator::getInstance())
             ->setAutoShutdown(true)
             ->buildAndRegisterGlobal();
 
-        $this->buildRootSpan();
+        register_shutdown_function($this->shutdown(...));
     }
 
     protected function createLoggerTransport(Configuration $configuration): TransportInterface
@@ -178,32 +168,11 @@ class OpenTelemetrySetup
             ->build();
     }
 
-    public function buildRootSpan()
-    {
-        // TODO: re-evaluate the concept of root-spans against best-practices
-        $spanBuilder = $this->tracer->spanBuilder("root")->setSpanKind(\OpenTelemetry\API\Trace\SpanKind::KIND_SERVER);
-
-        $this->rootSpan = $spanBuilder->startSpan();
-        $this->rootSpan->setAttributes($this->additionalAttributes);
-
-        $this->scopesWithSpans[] = [
-            "scope" => $this->rootSpan->activate(),
-            "span" => $this->rootSpan
-        ];
-
-        register_shutdown_function($this->shutdown(...));
-    }
-
-    public function getRootSpan(): SpanInterface
-    {
-        return $this->rootSpan;
-    }
-
     /**
      * @param iterable<non-empty-string, bool|int|float|string|array|null> $attributes
      * @psalm-param SpanKind::KIND_* $spanKind
      */
-    public function startNewSpanOfKind(string $name, int $spanKind, ?iterable $attributes = null)
+    public function startNewSpanOfKind(string $name, int $spanKind, ?iterable $attributes = null, ?ContextInterface $parentContext = null): SpanInterface
     {
         if (empty($name)) {
             throw new \Exception("span requires a non-empty-string");
@@ -211,16 +180,12 @@ class OpenTelemetrySetup
 
         $span = $this->tracer->spanBuilder(spanName: $name)
             ->setSpanKind($spanKind)
+            ->setParent($parentContext)
+            ->setAttributes([...$this->additionalAttributes, ...$attributes ?? []])
             ->startSpan();
 
-        $span->setAttributes(attributes: $this->additionalAttributes);
-
-        if ($attributes !== null) {
-            $span->setAttributes(attributes: $attributes);
-        }
-
         $this->scopesWithSpans[] = [
-            "scope" => $span->activate(),
+            "scope" => TraceContext::activate($span, $parentContext),
             "span" => $span
         ];
 
@@ -236,7 +201,7 @@ class OpenTelemetrySetup
 
         ["scope" => $scope, "span" => $span] = $scopeWithSpan;
         if ($span !== $spanToEnd) {
-            \array_push($scopeWithSpan, $this->scopesWithSpans);
+            $this->scopesWithSpans[] = $scopeWithSpan;
             throw new \Exception("Could not end span.\nSupplied span to end is not next in stack");
         }
 
@@ -245,31 +210,25 @@ class OpenTelemetrySetup
     }
 
 
-    protected function endRootSpan()
+    public function flushMetrics(): void
     {
-        $this->endSpan($this->rootSpan);
-        // Flush metrics to ensure they are exported at the end of the request
         $this->meterProvider->forceFlush();
     }
 
+    /**
+     * Fallback for hard exits and scopes cleanup
+     */
     protected function shutdown(): void
     {
-        $runAway = \count($this->scopesWithSpans) + 10;
-        while ($runAway-- && \count($this->scopesWithSpans) > 1) {
-            $scopeWithSpan = \array_pop($this->scopesWithSpans);
+        while (($scopeWithSpan = \array_pop($this->scopesWithSpans)) !== null) {
             ["scope" => $scope, "span" => $span] = $scopeWithSpan;
-
             if ($span->isRecording()) {
-                // TODO: make event `span.forcefullyClosed` configurable
                 $span->addEvent("span.forcefullyClosed");
-
-                $detachResult = $scope->detach();
-                if ($detachResult !== ScopeInterface::DETACHED) {
-                    $span->end();
-                }
             }
+            $scope->detach();
+            $span->end();
         }
 
-        $this->endRootSpan();
+        $this->flushMetrics();
     }
 }

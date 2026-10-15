@@ -3,6 +3,7 @@ SJS:
     OpenTelemetry:
       builtInAspect:
         enableAdvice:
+          commandDispatcher: true
           commandController: true
           actionController: true
           viewInterfaceRender: true

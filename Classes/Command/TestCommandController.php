@@ -6,6 +6,9 @@ use Neos\Flow\Cli\CommandController;
 use Neos\Flow\Log\ThrowableStorageInterface;
 use Psr\Log\LoggerInterface;
 use Neos\Flow\Log\Utility\LogEnvironment;
+use Neos\Flow\Configuration\ConfigurationManager;
+use Neos\Flow\Core\Booting\Scripts;
+use OpenTelemetry\API\Trace\Span;
 
 class TestCommandController extends CommandController
 {
@@ -14,6 +17,23 @@ class TestCommandController extends CommandController
 
     #[Flow\Inject()]
     protected ThrowableStorageInterface $throwableStorage;
+
+    #[Flow\Inject]
+    protected ConfigurationManager $configurationManager;
+
+    // ./flow test:subprocess
+    public function subprocessCommand(string $message = 'Subprocess trace test', bool $async = false): void
+    {
+        $spanContext = Span::getCurrent()->getContext();
+        $this->outputLine('Parent trace ID: %s', [$spanContext->getTraceId()]);
+        $settings = $this->configurationManager->getConfiguration(ConfigurationManager::CONFIGURATION_TYPE_SETTINGS, 'Neos.Flow');
+        $arguments = ['message' => $message];
+        if ($async) {
+            Scripts::executeCommandAsync('sjs.flow.opentelemetry:test:log', $settings, $arguments);
+        } else {
+            Scripts::executeCommand('sjs.flow.opentelemetry:test:log', $settings, true, $arguments);
+        }
+    }
 
     // ./flow test:exception
     public function exceptionCommand()

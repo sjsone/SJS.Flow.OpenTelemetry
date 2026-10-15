@@ -7,6 +7,8 @@ namespace SJS\Flow\OpenTelemetry\Manager;
 
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Core\Bootstrap;
+use Neos\Flow\Http\HttpRequestHandlerInterface;
+use OpenTelemetry\SemConv\Attributes\ServerAttributes;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup;
 use Neos\Flow\Annotations as Flow;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
@@ -15,7 +17,7 @@ use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
 #[Flow\Scope("singleton")]
 class OpenTelemetryManager
 {
-    protected static OpenTelemetrySetup $defaultSetup;
+    protected static ?OpenTelemetrySetup $defaultSetup = null;
 
     protected static Bootstrap $bootstrap;
 
@@ -49,23 +51,33 @@ class OpenTelemetryManager
             throw new \InvalidArgumentException("Could not find a suitable configuration at: $configurationPath");
         }
 
-        $setupClass = $configurationArray["class"];
-        if (!\class_exists($setupClass)) {
-            // TODO: improve correct class detection
+        $setupClass = $configurationArray["class"] ?? null;
+        if (
+            !\is_string($setupClass)
+            || !\is_a($setupClass, OpenTelemetrySetup::class, true)
+            || !(new \ReflectionClass($setupClass))->isInstantiable()
+        ) {
             $openTelemetrySetupClass = OpenTelemetrySetup::class;
-            throw new \InvalidArgumentException("Class '$setupClass' must be instance of '$openTelemetrySetupClass'");
+            throw new \InvalidArgumentException("Configuration at '$configurationPath.class' must name an instantiable class extending '$openTelemetrySetupClass'");
         }
 
         $context = self::$bootstrap->getContext();
 
         $runLevel = self::$bootstrap->isCompiletimeCommand(isset($_SERVER['argv'][1]) ? $_SERVER['argv'][1] : '') ? Bootstrap::RUNLEVEL_COMPILETIME : Bootstrap::RUNLEVEL_RUNTIME;
 
+        $additionalAttributes = ['neos.flow.runlevel' => $runLevel];
+        $requestHandler = self::$bootstrap->getActiveRequestHandler();
+        if ($requestHandler instanceof HttpRequestHandlerInterface) {
+            $request = $requestHandler->getHttpRequest();
+            if ($request->getUri()->getHost() !== '') {
+                $additionalAttributes[ServerAttributes::SERVER_ADDRESS] = $request->getUri()->getHost();
+            }
+        }
+
         return new $setupClass(
             configuration: Configuration::fromArray($configurationArray),
             context: $context,
-            additionalAttributes: [
-                "neos.flow.runlevel" => $runLevel
-            ]
+            additionalAttributes: $additionalAttributes
         );
     }
 }

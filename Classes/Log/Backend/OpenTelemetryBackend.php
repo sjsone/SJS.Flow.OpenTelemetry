@@ -9,7 +9,6 @@ use OpenTelemetry\API\Logs\LogRecord;
 use OpenTelemetry\API\Logs\Severity;
 use OpenTelemetry\SemConv\Attributes\CodeAttributes;
 use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
-use Neos\Flow\Annotations as Flow;
 
 class OpenTelemetryBackend extends AbstractBackend
 {
@@ -50,13 +49,13 @@ class OpenTelemetryBackend extends AbstractBackend
         $record->setSeverityNumber($this->mapSeverity($severity));
         $record->setSeverityText($this->mapSeverityText($severity));
 
-        foreach ($additionalData as $key => $value) {
-            // TODO: handle toString etc. 
-            if (\is_array($value) || \is_object($value)) {
-                continue;
+        if (\is_iterable($additionalData)) {
+            foreach ($additionalData as $key => $value) {
+                $value = $this->normalizeAttributeValue($value);
+                if ($value !== null) {
+                    $record->setAttribute("additional.$key", $value);
+                }
             }
-
-            $record->setAttribute("additional.$key", $value);
         }
 
         if ($methodName) {
@@ -74,6 +73,28 @@ class OpenTelemetryBackend extends AbstractBackend
         $record->setTimestamp((new \DateTime())->getTimestamp() * LogRecord::NANOS_PER_SECOND);
 
         return $record;
+    }
+
+    protected function normalizeAttributeValue(mixed $value): bool|int|float|string|null
+    {
+        try {
+            if ($value instanceof \BackedEnum) {
+                return $value->value;
+            }
+            if ($value instanceof \UnitEnum) {
+                return $value->name;
+            }
+            if ($value instanceof \Stringable) {
+                return (string) $value;
+            }
+            if (\is_array($value) || $value instanceof \JsonSerializable) {
+                return \json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return \is_scalar($value) ? $value : null;
     }
 
     protected function mapSeverity(int $severity): Severity
