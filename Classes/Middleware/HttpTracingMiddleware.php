@@ -13,6 +13,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
 use SJS\Flow\OpenTelemetry\Tracing\TraceContext;
+use SJS\Flow\OpenTelemetry\Tracing\ExceptionRecorder;
 
 #[Flow\Scope("singleton")]
 class HttpTracingMiddleware implements MiddlewareInterface
@@ -30,6 +31,7 @@ class HttpTracingMiddleware implements MiddlewareInterface
             'server.address' => $uri->getHost()
         ], TraceContext::extractFromServerRequest($request));
 
+        $failed = false;
         try {
             $response = $next->handle($request);
             $span->setAttribute('http.response.status_code', $response->getStatusCode());
@@ -39,13 +41,16 @@ class HttpTracingMiddleware implements MiddlewareInterface
             }
             return $response;
         } catch (\Throwable $exception) {
+            $failed = true;
             $span->setAttribute('http.response.status_code', ExceptionRecorder::httpStatus($exception));
             ExceptionRecorder::recordFailure($span, $exception, httpServer: true);
             $setup->deferEndSpan($span);
             throw $exception;
         } finally {
-            $setup->endSpan($span);
-            $setup->flushMetrics();
+            if (!$failed) {
+                $setup->endSpan($span);
+                $setup->flushMetrics();
+            }
         }
     }
 }
