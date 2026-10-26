@@ -88,9 +88,13 @@ class OpenTelemetrySetup
         $attributes = [
             ServiceAttributes::SERVICE_NAME => $configuration->service->name,
             ServiceAttributes::SERVICE_VERSION => $configuration->service->version,
-            DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME => (string) $context,
+            DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME => $configuration->options['environment'] ?? '',
             ...$this->additionalAttributes
         ];
+        if (\in_array($attributes[DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME], ['', null, false], true)) {
+            $attributes[DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME] = strtolower(str_replace('/', '-', (string) $context));
+        }
+        $attributes = array_filter($attributes, static fn($value) => $value !== '' && $value !== null);
 
         $resource = ResourceInfoFactory::emptyResource()->merge(ResourceInfo::create(Attributes::create($attributes)));
 
@@ -229,7 +233,7 @@ class OpenTelemetrySetup
         $span = $this->tracer->spanBuilder(spanName: $name)
             ->setSpanKind($spanKind)
             ->setParent($parentContext)
-            ->setAttributes([...$this->additionalAttributes, ...$attributes ?? []])
+            ->setAttributes($attributes ?? [])
             ->startSpan();
 
         $this->scopesWithSpans[] = [
