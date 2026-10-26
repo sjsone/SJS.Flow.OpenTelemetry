@@ -19,7 +19,8 @@ Just add these environment variables and you are good to go:
 
 - **`OTEL_EXPORTER_OTLP_ENDPOINT`**: The URL to your OTLP-compatible endpoint (e.g., Grafana Tempo, Jaeger)
 - **`OTEL_SERVICE_NAME`**: The name of your service
-- **`OTEL_SERVICE_VERSION`**: The version of your service
+- **`OTEL_SERVICE_VERSION`**: The version of your service (optional; omitted when empty)
+- **`OTEL_DEPLOYMENT_ENVIRONMENT`**: The environment name (optional; defaults to the lower-case Flow context with `/` replaced by `-`)
 
 ### SigNoz
 
@@ -32,9 +33,9 @@ For bigger setups Grafana with its extensions is still a better choice but for s
 
 For production environments, it is recommended to use the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) (`otelcol`) as a central telemetry processing layer for each project.
 
-Each log, trace/span and metric is sent and may take some time. Sending all of that synchronously over the network can impact performance.
-The OpenTelemetry Collector is installed ideally locally next to the project or with a  low-latency high-speed connection in-between.
-It acts as a buffer that sends every received data via the specified exporter.
+Spans and log records use the SDK batch processors and OTLP protobuf by default.
+
+The OpenTelemetry Collector acts as a buffer that is installed ideally locally next to the project.
 
 **Configure the Collector** (`otelcol-config.yaml`):
 
@@ -79,14 +80,13 @@ For more configuration examples, see the [OpenTelemetry Collector documentation]
 
 ## Functionality
 
-HTTP requests and CLI commands create entry spans. HTTP spans record response status and errors. CLI spans record exit codes.
-Incoming HTTP trace headers and CLI `TRACEPARENT`/`TRACESTATE` values continue an existing trace. Flow subprocesses inherit the active CLI trace context.
-
-For HTTP requests, `server.address` identifies the request domain in traces, logs and metrics.
-
 ### Logging Backend
 
-A logging backend that sends logs to OpenTelemetry.
+By default, system and security logs go to the backends `default` and `otel`. That means Flow continues writing its system and security log files. Other integrations can also keep their backends.
+
+Each backend applies its own `severityThreshold`, so the destinations may receive different log levels.
+
+`OpenTelemetryThrowableStorage` extends `FileStorage` so exception dump files, renderer options and Flow reference messages are preserved.
 
 Additional data uses `additional.<key>` attributes.
 `Stringable` objects become strings.
@@ -113,20 +113,39 @@ Neos:
       psr3:
         'Neos\Flow\Log\PsrLoggerFactory':
           systemLogger:
-            default:
+            otel:
               class: SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend
               options:
                 severityThreshold: "%LOG_NOTICE%"
                 attributes:
                   logger: "systemLogger"
           securityLogger:
-            default:
+            otel:
               class: SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend
               options:
                 severityThreshold: "%LOG_NOTICE%"
                 attributes:
                   logger: "securityLogger"
 ```
+
+#### Disable the default file backends
+
+```yaml
+Neos:
+  Flow:
+    log:
+      psr3:
+        'Neos\Flow\Log\PsrLoggerFactory':
+          systemLogger:
+            default:
+              class: Neos\Flow\Log\Backend\NullBackend
+          securityLogger:
+            default:
+              class: Neos\Flow\Log\Backend\NullBackend
+```
+
+> [!IMPORTANT]
+> Exception dump files in `Data/Logs/Exceptions` are managed separately by the throwable storage and remain enabled.
 
 ### Tracing Aspects
 
@@ -157,12 +176,15 @@ SJS:
           commandController: true
           actionController: true
           viewInterfaceRender: true
-          repository: true
+          repository: false
           fusionCacheEvents: true
       setup:
         default:
           class: SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup
           uri: "%env:OTEL_EXPORTER_OTLP_ENDPOINT%"
+          environment: "%env:OTEL_DEPLOYMENT_ENVIRONMENT%"
+          contentType: application/x-protobuf
+          headers: []
           service:
             name: "%env:OTEL_SERVICE_NAME%"
             version: "%env:OTEL_SERVICE_VERSION%"
@@ -188,14 +210,11 @@ Neos:
           middleware: 'SJS\Flow\OpenTelemetry\Middleware\HttpTracingMiddleware'
 ```
 
-### Configuration Reference
+### Authentication and sampling
 
-_`Configuration/Settings.yaml`_
+`OTEL_EXPORTER_OTLP_HEADERS` accepts comma-separated, URL-encoded header values, for example `Authorization=Bearer%20token`.
+The SDK uses `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, `OTEL_EXPORTER_OTLP_LOGS_HEADERS` or `OTEL_EXPORTER_OTLP_METRICS_HEADERS` in place of the common headers when set for that signal.
+Setup headers take precedence over these environment variables.
 
-| Setting                           | Type    | Default | Description                                          |
-| --------------------------------- | ------- | ------- | ---------------------------------------------------- |
-| `builtInAspect.enableAdvice.*`    | boolean | true    | Enable/disable specific tracing aspects              |
-| `setup.default.class`             | string  |         | OpenTelemetrySetup class to use                      |
-| `setup.default.uri`               | string  |         | OTLP endpoint URI                                    |
-| `setup.default.service.name`      | string  |         | Service name for telemetry data                      |
-| `setup.default.service.version`   | string  |         | Service version for telemetry data                   |
+Sampling follows `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`.
+For example: `parentbased_traceidratio` with argument `0.1` samples 10% of new traces and respects the sampling decision of incoming parents. The default is `parentbased_always_on`.
