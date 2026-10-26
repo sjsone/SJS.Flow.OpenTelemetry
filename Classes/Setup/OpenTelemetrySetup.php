@@ -108,7 +108,6 @@ class OpenTelemetrySetup
             ->setLoggerProvider($loggerProvider)
             ->setMeterProvider($this->meterProvider)
             ->setPropagator(TraceContextPropagator::getInstance())
-            ->setAutoShutdown(true)
             ->buildAndRegisterGlobal();
 
         register_shutdown_function($this->shutdown(...));
