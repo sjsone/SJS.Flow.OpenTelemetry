@@ -31,7 +31,7 @@ class CommandControllerAspect
     }
 
     /**
-     * @Flow\Around("within(Neos\Flow\Cli\CommandController) && method(.*->.*Command(.*)) && !method(.*->initialize.*(.*)) && setting(SJS.Flow.OpenTelemetry.builtInAspect.enableAdvice.commandController)")
+     * @Flow\Around("within(Neos\Flow\Cli\CommandController) && method(public .*->.*Command(.*)) && !method(.*->initialize.*(.*)) && setting(SJS.Flow.OpenTelemetry.builtInAspect.enableAdvice.commandController)")
      */
     public function spanAnyControllerCommand(JoinPointInterface $joinPoint): mixed
     {
