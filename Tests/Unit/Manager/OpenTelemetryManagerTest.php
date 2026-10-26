@@ -51,13 +51,13 @@ final class OpenTelemetryManagerTest extends TestCase
     {
         $manager = $this->configure([
             'class' => CustomSetup::class,
-            'uri' => 'http://localhost:4318',
+            'traces' => ['transport' => ['uri' => 'http://localhost:4318/v1/traces']],
             'service' => ['name' => 'test', 'version' => '1.0'],
             'customSetting' => 'available during construction',
         ]);
         $setup = OpenTelemetryManager::createSetup('custom');
         self::assertInstanceOf(CustomSetup::class, $setup);
-        self::assertSame('http://localhost:4318', $setup->receivedConfiguration->uri);
+        self::assertSame('http://localhost:4318/v1/traces', $setup->receivedConfiguration->traces->transport->uri);
         self::assertSame('test', $setup->receivedConfiguration->service->name);
         self::assertSame($manager, $setup->receivedConfiguration->configurationManager);
         self::assertSame('available during construction', $setup->receivedConfiguration->options['customSetting']);

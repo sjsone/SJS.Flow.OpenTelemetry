@@ -508,7 +508,9 @@ final class EntrySpanTest extends TestCase
     public function testConstructingSetupDoesNotCreateOrActivateASpan(): void
     {
         $setup = new OpenTelemetrySetup(Configuration::fromArray([
-            'uri' => 'http://127.0.0.1:9',
+            'traces' => ['transport' => ['uri' => 'http://127.0.0.1:9/v1/traces']],
+            'logs' => ['transport' => ['uri' => 'http://127.0.0.1:9/v1/logs']],
+            'metrics' => ['transport' => ['uri' => 'http://127.0.0.1:9/v1/metrics']],
             'service' => ['name' => 'test', 'version' => '1']
         ]), new ApplicationContext('Testing'));
         try {

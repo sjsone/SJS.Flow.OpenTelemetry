@@ -14,7 +14,6 @@ use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\Context\ContextInterface;
-use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\OtlpUtil;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
@@ -47,6 +46,7 @@ use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
 use OpenTelemetry\SDK\Metrics\MetricExporterInterface;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
+use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration\Transport;
 use SJS\Flow\OpenTelemetry\Tracing\TraceContext;
 use OpenTelemetry\API\Trace\SpanKind;
 
@@ -126,25 +126,20 @@ class OpenTelemetrySetup
 
     protected function createLoggerTransport(Configuration $configuration): TransportInterface
     {
-        return $this->createTransport($configuration, Signals::LOGS, 'logs');
+        return $this->createTransport($configuration->logs->transport, Signals::LOGS);
     }
 
     protected function createSpanTransport(Configuration $configuration): TransportInterface
     {
-        return $this->createTransport($configuration, Signals::TRACE, 'traces');
+        return $this->createTransport($configuration->traces->transport, Signals::TRACE);
     }
 
-    protected function createTransport(Configuration $configuration, string $signal, string $path): TransportInterface
+    protected function createTransport(Transport $configuration, string $signal): TransportInterface
     {
-        $contentType = $configuration->options['contentType'] ?? ContentTypes::PROTOBUF;
-        if (!\in_array($contentType, [ContentTypes::PROTOBUF, ContentTypes::JSON], true)) {
-            throw new \InvalidArgumentException('OTLP contentType must be application/x-protobuf or application/json');
-        }
-
         return (new OtlpHttpTransportFactory())->create(
-            rtrim($configuration->uri, '/') . '/v1/' . $path,
-            $contentType,
-            array_change_key_case($configuration->options['headers'] ?? []) + array_change_key_case(OtlpUtil::getHeaders($signal))
+            $configuration->uri,
+            $configuration->contentType,
+            array_change_key_case($configuration->headers) + array_change_key_case(OtlpUtil::getHeaders($signal))
         );
     }
 
@@ -199,7 +194,7 @@ class OpenTelemetrySetup
 
     protected function createMetricTransport(Configuration $configuration): TransportInterface
     {
-        return $this->createTransport($configuration, Signals::METRICS, 'metrics');
+        return $this->createTransport($configuration->metrics->transport, Signals::METRICS);
     }
 
     protected function createMeterProvider(ResourceInfo $resource): MeterProviderInterface

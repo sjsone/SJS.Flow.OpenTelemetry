@@ -120,18 +120,48 @@ final class OpenTelemetrySetupTest extends TestCase
         self::assertCount(1, $metrics->getResourceMetrics()[0]->getScopeMetrics()[0]->getMetrics());
     }
 
-    public function testEnvironmentAndHeadersCanBeConfiguredAndJsonRemainsAvailable(): void
+    public function testSignalsHaveIndependentEndpointsHeadersAndContentTypes(): void
     {
-        $this->createSetup(['environment' => 'staging', 'contentType' => 'application/json', 'headers' => ['authorization' => 'configured']]);
+        $this->createSetup([
+            'environment' => 'staging',
+            'traces' => ['transport' => [
+                'uri' => 'https://traces.test/custom-traces',
+                'contentType' => 'application/json',
+                'headers' => ['authorization' => 'trace credential'],
+            ]],
+            'logs' => ['transport' => [
+                'uri' => 'http://logs.test/custom-logs',
+                'contentType' => 'application/x-protobuf',
+                'headers' => ['Authorization' => 'log credential'],
+            ]],
+            'metrics' => ['transport' => [
+                'uri' => 'https://metrics.test/custom-metrics',
+                'contentType' => 'application/json',
+                'headers' => ['authorization' => 'metric credential'],
+            ]],
+        ]);
         $span = $this->setup->startNewSpanOfKind('root', SpanKind::KIND_INTERNAL, [], Context::getRoot());
+        $this->setup->logger->emit(new LogRecord('configured transport'));
+        $this->setup->meter->createCounter('test.counter')->add(1);
         $this->setup->endSpan($span);
         $this->shutdown();
-        $request = $this->requests['/v1/traces'][0];
-        self::assertSame('configured', $request->getHeaderLine('Authorization'));
-        self::assertSame('application/json', $request->getHeaderLine('Content-Type'));
+        self::assertCount(3, $this->requests);
+        foreach (['traces' => ['trace', 'application/json'], 'logs' => ['log', 'application/x-protobuf'], 'metrics' => ['metric', 'application/json']] as $signal => [$credential, $contentType]) {
+            self::assertCount(1, $this->requests['/custom-' . $signal]);
+            $request = $this->requests['/custom-' . $signal][0];
+            self::assertSame($signal . '.test', $request->getUri()->getHost());
+            self::assertSame($credential . ' credential', $request->getHeaderLine('Authorization'));
+            self::assertSame($contentType, $request->getHeaderLine('Content-Type'));
+        }
         $traces = new ExportTraceServiceRequest();
-        $traces->mergeFromJsonString((string) $request->getBody());
+        $traces->mergeFromJsonString((string) $this->requests['/custom-traces'][0]->getBody());
         self::assertSame('staging', $this->attributes($traces->getResourceSpans()[0]->getResource()->getAttributes())['deployment.environment.name']);
+        $logs = new ExportLogsServiceRequest();
+        $logs->mergeFromString((string) $this->requests['/custom-logs'][0]->getBody());
+        self::assertCount(1, $logs->getResourceLogs()[0]->getScopeLogs()[0]->getLogRecords());
+        $metrics = new ExportMetricsServiceRequest();
+        $metrics->mergeFromJsonString((string) $this->requests['/custom-metrics'][0]->getBody());
+        self::assertCount(1, $metrics->getResourceMetrics()[0]->getScopeMetrics()[0]->getMetrics());
     }
 
     public function testSamplingEnvironmentAppliesToTheEntireLocalTrace(): void
@@ -194,10 +224,12 @@ final class OpenTelemetrySetupTest extends TestCase
 
     private function createSetup(array $options = []): void
     {
-        $this->setup = new OpenTelemetrySetup(Configuration::fromArray($options + [
-            'uri' => 'http://collector.test:4318/',
+        $this->setup = new OpenTelemetrySetup(Configuration::fromArray(array_replace_recursive([
+            'traces' => ['transport' => ['uri' => 'http://collector.test:4318/v1/traces']],
+            'logs' => ['transport' => ['uri' => 'http://collector.test:4318/v1/logs']],
+            'metrics' => ['transport' => ['uri' => 'http://collector.test:4318/v1/metrics']],
             'service' => ['name' => 'test', 'version' => ''],
-        ]), new ApplicationContext('Production/Docker'), ['neos.flow.runlevel' => 'runtime']);
+        ], $options)), new ApplicationContext('Production/Docker'), ['neos.flow.runlevel' => 'runtime']);
     }
 
     private function shutdown(): void

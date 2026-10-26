@@ -181,14 +181,34 @@ SJS:
       setup:
         default:
           class: SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup
-          uri: "%env:OTEL_EXPORTER_OTLP_ENDPOINT%"
           environment: "%env:OTEL_DEPLOYMENT_ENVIRONMENT%"
-          contentType: application/x-protobuf
-          headers: []
+          traces:
+            transport:
+              uri: "%env:OTEL_EXPORTER_OTLP_TRACES_ENDPOINT%"
+              contentType: application/x-protobuf
+              headers: []
+          logs:
+            transport:
+              uri: "%env:OTEL_EXPORTER_OTLP_LOGS_ENDPOINT%"
+              contentType: application/x-protobuf
+              headers: []
+          metrics:
+            transport:
+              uri: "%env:OTEL_EXPORTER_OTLP_METRICS_ENDPOINT%"
+              contentType: application/x-protobuf
+              headers: []
           service:
             name: "%env:OTEL_SERVICE_NAME%"
             version: "%env:OTEL_SERVICE_VERSION%"
 ```
+
+`contentType` accepts `application/x-protobuf` (default) or `application/json`.
+`transport.uri` is the complete signal endpoint and is used as-is: for example, `http://otelcol:4318/v1/traces`. No signal path is appended to an explicitly configured URI.
+
+If the URI is empty or its environment variable is unset, the signal uses `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`.
+
+If that is also unset, it derives the signal endpoint from `OTEL_EXPORTER_OTLP_ENDPOINT`, adding `/v1/traces`, `/v1/logs` or `/v1/metrics`.
+The final fallback is `http://localhost:4318` with the corresponding signal path.
 
 ### HTTP Tracing Middleware
 
@@ -214,7 +234,7 @@ Neos:
 
 `OTEL_EXPORTER_OTLP_HEADERS` accepts comma-separated, URL-encoded header values, for example `Authorization=Bearer%20token`.
 The SDK uses `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, `OTEL_EXPORTER_OTLP_LOGS_HEADERS` or `OTEL_EXPORTER_OTLP_METRICS_HEADERS` in place of the common headers when set for that signal.
-Setup headers take precedence over these environment variables.
+Each signal’s `transport.headers` takes precedence over its environment headers.
 
 Sampling follows `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`.
 For example: `parentbased_traceidratio` with argument `0.1` samples 10% of new traces and respects the sampling decision of incoming parents. The default is `parentbased_always_on`.
