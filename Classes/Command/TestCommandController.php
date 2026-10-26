@@ -38,7 +38,7 @@ class TestCommandController extends CommandController
     // ./flow test:exception
     public function exceptionCommand()
     {
-        throw new \Exception('Testing the Loki client', 6942066669);
+        throw new \Exception('Test Exception', 6942066669);
     }
 
     // ./flow test:storedexception
