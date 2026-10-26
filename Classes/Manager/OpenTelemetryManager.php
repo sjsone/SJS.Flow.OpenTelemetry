@@ -66,14 +66,6 @@ class OpenTelemetryManager
         $runLevel = self::$bootstrap->isCompiletimeCommand(isset($_SERVER['argv'][1]) ? $_SERVER['argv'][1] : '') ? Bootstrap::RUNLEVEL_COMPILETIME : Bootstrap::RUNLEVEL_RUNTIME;
 
         $additionalAttributes = ['neos.flow.runlevel' => $runLevel];
-        $requestHandler = self::$bootstrap->getActiveRequestHandler();
-        if ($requestHandler instanceof HttpRequestHandlerInterface) {
-            $request = $requestHandler->getHttpRequest();
-            if ($request->getUri()->getHost() !== '') {
-                $additionalAttributes[ServerAttributes::SERVER_ADDRESS] = $request->getUri()->getHost();
-            }
-        }
-
         return new $setupClass(
             configuration: Configuration::fromArray($configurationArray),
             context: $context,
