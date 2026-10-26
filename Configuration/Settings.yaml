@@ -13,6 +13,10 @@ SJS:
         default:
           class: SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup
           uri: "%env:OTEL_EXPORTER_OTLP_ENDPOINT%"
+          # TODO: split between transport/export etc. so headers and content type are not first-level configurations
+          environment: "%env:OTEL_DEPLOYMENT_ENVIRONMENT%"
+          contentType: application/x-protobuf
+          headers: []
           service:
             name: "%env:OTEL_SERVICE_NAME%"
             version: "%env:OTEL_SERVICE_VERSION%"
