@@ -17,9 +17,14 @@ class Service
 
     public static function fromArray(array $source): self
     {
+        $version = $source['version'] ?? '';
+        if ($version === false) {
+            $version = '';
+        }
+
         return new self(
             name: $source["name"],
-            version: $source["version"],
+            version: $version,
         );
     }
 }
