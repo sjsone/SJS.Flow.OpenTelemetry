@@ -15,12 +15,12 @@ class FusionCacheMetrics
 
     public function recordHit(string $fusionPath): void
     {
-        $this->hitCounter()->add(1, ['fusion.path' => $fusionPath]);
+        $this->hitCounter()->add(1);
     }
 
     public function recordMiss(string $fusionPath): void
     {
-        $this->missCounter()->add(1, ['fusion.path' => $fusionPath]);
+        $this->missCounter()->add(1);
     }
 
     private function hitCounter(): CounterInterface
