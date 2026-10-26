@@ -62,6 +62,10 @@ class OpenTelemetrySetup
     public readonly MeterProviderInterface $meterProvider;
 
     public readonly MeterInterface $meter;
+    /** @var array<int, true> */
+    protected array $deferredSpans = [];
+
+    protected bool $shutDown = false;
 
     public function __construct(
         protected readonly Configuration $configuration,
@@ -198,17 +202,11 @@ class OpenTelemetrySetup
         if ($scopeWithSpan === null) {
             throw new \Exception("Could not end span.\nEvery span in the stack already ended.");
         }
-
-        ["scope" => $scope, "span" => $span] = $scopeWithSpan;
-        if ($span !== $spanToEnd) {
-            $this->scopesWithSpans[] = $scopeWithSpan;
-            throw new \Exception("Could not end span.\nSupplied span to end is not next in stack");
-        }
-
-        $scope->detach();
-        $spanToEnd->end();
+    /** Keep failed HTTP requests active while Flow logs the exception and renders its error page. */
+    public function deferEndSpan(SpanInterface $span): void
+    {
+        $this->deferredSpans[spl_object_id($span)] = true;
     }
-
 
     public function flushMetrics(): void
     {
@@ -220,15 +218,23 @@ class OpenTelemetrySetup
      */
     protected function shutdown(): void
     {
+        if ($this->shutDown) {
+            return;
+        }
+        $this->shutDown = true;
         while (($scopeWithSpan = \array_pop($this->scopesWithSpans)) !== null) {
             ["scope" => $scope, "span" => $span] = $scopeWithSpan;
-            if ($span->isRecording()) {
+            if ($span->isRecording() && !isset($this->deferredSpans[spl_object_id($span)])) {
                 $span->addEvent("span.forcefullyClosed");
             }
             $scope->detach();
             $span->end();
         }
 
-        $this->flushMetrics();
+        $this->deferredSpans = [];
+        // Providers must stay alive until ALL spans have ended
+        $this->meterProvider->shutdown();
+        $this->tracerProvider?->shutdown();
+        $this->loggerProvider?->shutdown();
     }
 }
