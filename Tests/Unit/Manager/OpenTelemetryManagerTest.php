@@ -49,20 +49,23 @@ final class OpenTelemetryManagerTest extends TestCase
 
     public function testCustomSetupReceivesConfigurationContextAndRunLevel(): void
     {
-        $this->configure([
+        $manager = $this->configure([
             'class' => CustomSetup::class,
             'uri' => 'http://localhost:4318',
             'service' => ['name' => 'test', 'version' => '1.0'],
+            'customSetting' => 'available during construction',
         ]);
         $setup = OpenTelemetryManager::createSetup('custom');
         self::assertInstanceOf(CustomSetup::class, $setup);
         self::assertSame('http://localhost:4318', $setup->receivedConfiguration->uri);
         self::assertSame('test', $setup->receivedConfiguration->service->name);
+        self::assertSame($manager, $setup->receivedConfiguration->configurationManager);
+        self::assertSame('available during construction', $setup->receivedConfiguration->options['customSetting']);
         self::assertSame('Testing', (string) $setup->receivedContext);
         self::assertSame(['neos.flow.runlevel' => Bootstrap::RUNLEVEL_RUNTIME], $setup->receivedAttributes);
     }
 
-    private function configure(array $configuration): void
+    private function configure(array $configuration): ConfigurationManager
     {
         $manager = $this->createMock(ConfigurationManager::class);
         $manager->expects(self::once())->method('getConfiguration')
@@ -73,6 +76,7 @@ final class OpenTelemetryManagerTest extends TestCase
         $bootstrap->method('getContext')->willReturn(new ApplicationContext('Testing'));
         $bootstrap->method('isCompiletimeCommand')->willReturn(false);
         OpenTelemetryManager::setBootstrap($bootstrap);
+        return $manager;
     }
 }
 

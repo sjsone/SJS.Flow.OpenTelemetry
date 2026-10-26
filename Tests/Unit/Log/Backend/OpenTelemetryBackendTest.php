@@ -7,6 +7,8 @@ namespace SJS\Flow\OpenTelemetry\Tests\Unit\Log\Backend;
 use OpenTelemetry\SDK\Logs\LoggerProvider;
 use OpenTelemetry\SDK\Logs\LogRecordProcessorInterface;
 use OpenTelemetry\SDK\Logs\ReadWriteLogRecord;
+use OpenTelemetry\API\Logs\LoggerInterface;
+use OpenTelemetry\API\Logs\Severity;
 use PHPUnit\Framework\TestCase;
 use SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend;
 
@@ -81,7 +83,47 @@ final class OpenTelemetryBackendTest extends TestCase
         self::assertSame(['additional.key' => 'value'], $this->emit(new \ArrayIterator(['key' => 'value']))->getAttributes()->toArray());
     }
 
-    private function emit(mixed $additionalData): ReadWriteLogRecord
+    /** @dataProvider severities */
+    public function testAllSyslogSeveritiesAreMapped(int $severity, Severity $number, string $text): void
+    {
+        $record = $this->emit(null, $severity);
+        self::assertSame($number->value, $record->getSeverityNumber());
+        self::assertSame($text, $record->getSeverityText());
+    }
+
+    public static function severities(): iterable
+    {
+        yield [LOG_EMERG, Severity::FATAL2, 'EMERG'];
+        yield [LOG_ALERT, Severity::FATAL, 'ALERT'];
+        yield [LOG_CRIT, Severity::ERROR3, 'CRIT'];
+        yield [LOG_ERR, Severity::ERROR, 'ERR'];
+        yield [LOG_WARNING, Severity::WARN, 'WARNING'];
+        yield [LOG_NOTICE, Severity::INFO2, 'NOTICE'];
+        yield [LOG_INFO, Severity::INFO, 'INFO'];
+        yield [LOG_DEBUG, Severity::DEBUG, 'DEBUG'];
+    }
+
+    public function testSeverityThresholdFiltersMessagesBeforeEmission(): void
+    {
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())->method('emit');
+        $backend = new OpenTelemetryBackend(['severityThreshold' => LOG_WARNING]);
+        (new \ReflectionProperty(OpenTelemetryBackend::class, 'logger'))->setValue($backend, $logger);
+        $backend->append('debug', LOG_DEBUG);
+        $backend->append('info', LOG_INFO);
+        $backend->append('warning', LOG_WARNING);
+    }
+
+    public function testTimestampPreservesSubsecondPrecision(): void
+    {
+        $before = (int) (microtime(true) * 1_000_000_000);
+        $record = $this->emit(null);
+        self::assertGreaterThanOrEqual($before, $record->getTimestamp());
+        self::assertLessThanOrEqual((int) (microtime(true) * 1_000_000_000), $record->getTimestamp());
+        self::assertNotSame(0, $record->getTimestamp() % 1_000_000_000);
+    }
+
+    private function emit(mixed $additionalData, int $severity = LOG_INFO): ReadWriteLogRecord
     {
         $record = null;
         $processor = $this->createMock(LogRecordProcessorInterface::class);
@@ -90,11 +132,11 @@ final class OpenTelemetryBackendTest extends TestCase
         });
         $provider = LoggerProvider::builder()->addLogRecordProcessor($processor)->build();
         $backend = new OpenTelemetryBackend();
+        $backend->setSeverityThreshold(LOG_DEBUG);
         $logger = new \ReflectionProperty(OpenTelemetryBackend::class, 'logger');
-        $logger->setAccessible(true);
         $logger->setValue($backend, $provider->getLogger('test'));
         try {
-            $backend->append('message', additionalData: $additionalData);
+            $backend->append('message', severity: $severity, additionalData: $additionalData);
         } finally {
             $provider->shutdown();
         }

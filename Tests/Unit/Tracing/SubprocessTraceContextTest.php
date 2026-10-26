@@ -153,24 +153,17 @@ final class SubprocessTraceContextTest extends TestCase
         self::assertFalse(getenv('TRACESTATE'));
     }
 
-    public function testRejectedOutOfOrderEndPreservesTheScopeStack(): void
+    public function testOutOfOrderEndClosesChildrenAndRestoresTheScope(): void
     {
         $setup = $this->createSetup();
         $parent = $setup->startNewSpanOfKind('parent', SpanKind::KIND_INTERNAL);
-        $parentTraceparent = getenv('TRACEPARENT');
         $child = $setup->startNewSpanOfKind('child', SpanKind::KIND_INTERNAL);
-        $childTraceparent = getenv('TRACEPARENT');
-        try {
-            $setup->endSpan($parent);
-            self::fail('Ending the parent before its child must be rejected.');
-        } catch (\Exception $exception) {
-            self::assertStringContainsString('not next in stack', $exception->getMessage());
-            self::assertSame($childTraceparent, getenv('TRACEPARENT'));
-        } finally {
-            $setup->endSpan($child);
-            self::assertSame($parentTraceparent, getenv('TRACEPARENT'));
-            $setup->endSpan($parent);
-        }
+        $setup->endSpan($parent);
+        self::assertFalse($parent->isRecording());
+        self::assertFalse($child->isRecording());
+        self::assertFalse(Span::getCurrent()->getContext()->isValid());
+        // A later finally block ending the forced child must also be harmless.
+        $setup->endSpan($child);
         self::assertFalse(getenv('TRACEPARENT'));
         self::assertFalse(getenv('TRACESTATE'));
     }
@@ -183,14 +176,13 @@ final class SubprocessTraceContextTest extends TestCase
         self::assertFalse($child->isRecording());
         self::assertStringEndsWith('-00', getenv('TRACEPARENT'));
         $shutdown = new \ReflectionMethod(OpenTelemetrySetup::class, 'shutdown');
-        $shutdown->setAccessible(true);
         $shutdown->invoke($setup);
         self::assertFalse(getenv('TRACEPARENT'));
         self::assertFalse(getenv('TRACESTATE'));
         self::assertFalse(Span::getCurrent()->getContext()->isValid());
     }
 
-    public function testIterableAttributesOverrideSetupAttributes(): void
+    public function testIterableSpanAttributesDoNotDuplicateResourceAttributes(): void
     {
         $setup = $this->createSetup(additionalAttributes: ['shared' => 'default', 'setup' => true]);
         $attributes = (static function (): \Generator {
@@ -200,7 +192,7 @@ final class SubprocessTraceContextTest extends TestCase
         $span = $setup->startNewSpanOfKind('iterable attributes', SpanKind::KIND_INTERNAL, $attributes);
         try {
             self::assertSame('override', $span->getAttribute('shared'));
-            self::assertTrue($span->getAttribute('setup'));
+            self::assertNull($span->getAttribute('setup'));
             self::assertSame('test', $span->getAttribute('operation'));
         } finally {
             $setup->endSpan($span);
@@ -212,9 +204,8 @@ final class SubprocessTraceContextTest extends TestCase
         // Exercise scope management without registering shutdown callbacks or network exporters.
         $setup = (new \ReflectionClass(OpenTelemetrySetup::class))->newInstanceWithoutConstructor();
         $provider = TracerProvider::builder()->setSampler($sampled ? new AlwaysOnSampler() : new AlwaysOffSampler())->build();
-        foreach (['tracer' => $provider->getTracer('test'), 'meterProvider' => MeterProvider::builder()->build(), 'additionalAttributes' => $additionalAttributes] as $name => $value) {
+        foreach (['tracer' => $provider->getTracer('test'), 'logger' => new \OpenTelemetry\API\Logs\NoopLogger(), 'meterProvider' => MeterProvider::builder()->build(), 'additionalAttributes' => $additionalAttributes] as $name => $value) {
             $property = new \ReflectionProperty(OpenTelemetrySetup::class, $name);
-            $property->setAccessible(true);
             $property->setValue($setup, $value);
         }
 
