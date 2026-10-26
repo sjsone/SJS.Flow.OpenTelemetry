@@ -276,6 +276,7 @@ class OpenTelemetrySetup
     {
         $this->logger->emit((new LogRecord($message))->setSeverityNumber(Severity::WARN)->setSeverityText('WARNING'));
     }
+
     /** Keep failed HTTP requests active while Flow logs the exception and renders its error page. */
     public function deferEndSpan(SpanInterface $span): void
     {
