@@ -29,6 +29,10 @@ class OpenTelemetryBackend extends AbstractBackend
 
     public function append(string $message, int $severity = LOG_INFO, $additionalData = null, string|null $packageKey = null, string|null $className = null, string|null $methodName = null): void
     {
+        if ($severity > $this->severityThreshold) {
+            return;
+        }
+
         $record = $this->buildLogRecord(
             message: $message,
             severity: $severity,
@@ -70,7 +74,7 @@ class OpenTelemetryBackend extends AbstractBackend
             $record->setAttributes($this->attributes);
         }
 
-        $record->setTimestamp((new \DateTime())->getTimestamp() * LogRecord::NANOS_PER_SECOND);
+        $record->setTimestamp((int) (microtime(true) * LogRecord::NANOS_PER_SECOND));
 
         return $record;
     }
@@ -104,7 +108,10 @@ class OpenTelemetryBackend extends AbstractBackend
             LOG_NOTICE => Severity::INFO2,
             LOG_WARNING => Severity::WARN,
             LOG_ERR => Severity::ERROR,
-            LOG_ALERT => Severity::ERROR2,
+            LOG_EMERG => Severity::FATAL2,
+            LOG_ALERT => Severity::FATAL,
+            LOG_CRIT => Severity::ERROR3,
+            LOG_DEBUG => Severity::DEBUG,
 
             default => Severity::INFO,
         };
@@ -118,6 +125,9 @@ class OpenTelemetryBackend extends AbstractBackend
             LOG_WARNING => "WARNING",
             LOG_ERR => "ERR",
             LOG_ALERT => "ALERT",
+            LOG_EMERG => "EMERG",
+            LOG_CRIT => "CRIT",
+            LOG_DEBUG => "DEBUG",
 
             default => "INFO",
         };
