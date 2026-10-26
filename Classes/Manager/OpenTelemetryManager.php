@@ -7,8 +7,6 @@ namespace SJS\Flow\OpenTelemetry\Manager;
 
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Core\Bootstrap;
-use Neos\Flow\Http\HttpRequestHandlerInterface;
-use OpenTelemetry\SemConv\Attributes\ServerAttributes;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup;
 use Neos\Flow\Annotations as Flow;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
@@ -67,7 +65,7 @@ class OpenTelemetryManager
 
         $additionalAttributes = ['neos.flow.runlevel' => $runLevel];
         return new $setupClass(
-            configuration: Configuration::fromArray($configurationArray),
+            configuration: Configuration::fromArray($configurationArray, $configurationManager),
             context: $context,
             additionalAttributes: $additionalAttributes
         );
