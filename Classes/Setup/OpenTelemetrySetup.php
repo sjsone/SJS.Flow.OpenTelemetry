@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace SJS\Flow\OpenTelemetry\Setup;
 
 use Neos\Flow\Core\ApplicationContext;
+use OpenTelemetry\API\Common\Time\Clock;
+use OpenTelemetry\API\Logs\LogRecord;
+use OpenTelemetry\API\Logs\Severity;
+use OpenTelemetry\API\Signals;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\TracerInterface;
@@ -12,34 +16,38 @@ use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\Context\ContextInterface;
 use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
+use OpenTelemetry\Contrib\Otlp\OtlpUtil;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
 use OpenTelemetry\SDK\Common\Export\TransportInterface;
 use OpenTelemetry\SDK\Common\Instrumentation\InstrumentationScopeFactory;
 use OpenTelemetry\SDK\Logs\LogRecordLimitsBuilder;
-use OpenTelemetry\SDK\Logs\Processor\SimpleLogRecordProcessor;
+use OpenTelemetry\SDK\Logs\LogRecordProcessorInterface;
+use OpenTelemetry\SDK\Logs\Processor\BatchLogRecordProcessor;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Sdk;
-use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
-use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\SamplerFactory;
+use OpenTelemetry\SDK\Trace\SamplerInterface;
 use OpenTelemetry\SDK\Trace\SpanExporterInterface;
-use OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor;
+use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
 use OpenTelemetry\SDK\Trace\TracerProvider;
+use OpenTelemetry\SDK\Trace\TracerProviderInterface;
 use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
 use OpenTelemetry\SemConv\Incubating\Attributes\DeploymentIncubatingAttributes;
 use OpenTelemetry\API\Logs\LoggerInterface;
 use OpenTelemetry\API\Metrics\MeterInterface;
 use OpenTelemetry\Contrib\Otlp\LogsExporter;
+use OpenTelemetry\Contrib\Otlp\MetricExporter;
 use OpenTelemetry\SDK\Logs\LoggerProvider;
 use OpenTelemetry\SDK\Logs\LoggerProviderInterface;
 use OpenTelemetry\SDK\Logs\LogRecordExporterInterface;
 use OpenTelemetry\SDK\Metrics\MeterProvider;
 use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
+use OpenTelemetry\SDK\Metrics\MetricExporterInterface;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
 use SJS\Flow\OpenTelemetry\Tracing\TraceContext;
-use Neos\Flow\Annotations as Flow;
 use OpenTelemetry\API\Trace\SpanKind;
 
 class OpenTelemetrySetup
@@ -62,6 +70,11 @@ class OpenTelemetrySetup
     public readonly MeterProviderInterface $meterProvider;
 
     public readonly MeterInterface $meter;
+
+    protected ?TracerProviderInterface $tracerProvider = null;
+
+    protected ?LoggerProviderInterface $loggerProvider = null;
+
     /** @var array<int, true> */
     protected array $deferredSpans = [];
 
@@ -82,21 +95,15 @@ class OpenTelemetrySetup
         $resource = ResourceInfoFactory::emptyResource()->merge(ResourceInfo::create(Attributes::create($attributes)));
 
         $this->spanTransport = $this->createSpanTransport($configuration);
-        $this->spanExporter = new SpanExporter($this->spanTransport);
+        $this->spanExporter = $this->createSpanExporter($this->spanTransport);
 
-        $tracerProvider = TracerProvider::builder()
-            ->addSpanProcessor(
-                new SimpleSpanProcessor($this->spanExporter)
-            )
-            ->setResource($resource)
-            ->setSampler(new ParentBased(new AlwaysOnSampler()))
-            ->build();
+        $tracerProvider = $this->tracerProvider = $this->createTracerProvider($this->spanExporter, $resource);
 
         $this->tracer = $tracerProvider->getTracer('SJS.Flow.OpenTelemetry');
 
         $this->loggerTransport = $this->createLoggerTransport($configuration);
         $logRecordExporter = $this->createLogRecordExporter($this->loggerTransport);
-        $loggerProvider = $this->createLoggerProvider($logRecordExporter, $resource);
+        $loggerProvider = $this->loggerProvider = $this->createLoggerProvider($logRecordExporter, $resource);
 
         $this->logger = $loggerProvider->getLogger('SJS.Flow.OpenTelemetry');
 
@@ -115,16 +122,45 @@ class OpenTelemetrySetup
 
     protected function createLoggerTransport(Configuration $configuration): TransportInterface
     {
-        $uri = $configuration->uri;
-        $transportFactory = new OtlpHttpTransportFactory();
-        return $transportFactory->create("$uri/v1/logs", ContentTypes::JSON);
+        return $this->createTransport($configuration, Signals::LOGS, 'logs');
     }
 
     protected function createSpanTransport(Configuration $configuration): TransportInterface
     {
-        $uri = $configuration->uri;
-        $transportFactory = new OtlpHttpTransportFactory();
-        return $transportFactory->create("$uri/v1/traces", ContentTypes::JSON);
+        return $this->createTransport($configuration, Signals::TRACE, 'traces');
+    }
+
+    protected function createTransport(Configuration $configuration, string $signal, string $path): TransportInterface
+    {
+        $contentType = $configuration->options['contentType'] ?? ContentTypes::PROTOBUF;
+        if (!\in_array($contentType, [ContentTypes::PROTOBUF, ContentTypes::JSON], true)) {
+            throw new \InvalidArgumentException('OTLP contentType must be application/x-protobuf or application/json');
+        }
+
+        return (new OtlpHttpTransportFactory())->create(
+            rtrim($configuration->uri, '/') . '/v1/' . $path,
+            $contentType,
+            array_change_key_case($configuration->options['headers'] ?? []) + array_change_key_case(OtlpUtil::getHeaders($signal))
+        );
+    }
+
+    protected function createSpanExporter(TransportInterface $transport): SpanExporterInterface
+    {
+        return new SpanExporter($transport);
+    }
+
+    protected function createSampler(): SamplerInterface
+    {
+        return (new SamplerFactory())->create();
+    }
+
+    protected function createTracerProvider(SpanExporterInterface $exporter, ResourceInfo $resource): TracerProviderInterface
+    {
+        return TracerProvider::builder()
+            ->addSpanProcessor(BatchSpanProcessor::builder($exporter)->build())
+            ->setResource($resource)
+            ->setSampler($this->createSampler())
+            ->build();
     }
 
     protected function createLogRecordExporter(TransportInterface $transport): LogRecordExporterInterface
@@ -132,11 +168,17 @@ class OpenTelemetrySetup
         return new LogsExporter($transport);
     }
 
+    protected function createLogRecordProcessor(LogRecordExporterInterface $exporter): LogRecordProcessorInterface
+    {
+        return new BatchLogRecordProcessor(
+            exporter: $exporter,
+            clock: Clock::getDefault()
+        );
+    }
+
     protected function createLoggerProvider(LogRecordExporterInterface $exporter, ResourceInfo $resourceInfo): LoggerProviderInterface
     {
-        $processor = new SimpleLogRecordProcessor(
-            exporter: $exporter
-        );
+        $processor = $this->createLogRecordProcessor($exporter);
 
         $attributesFactory = (new LogRecordLimitsBuilder())->build()->getAttributeFactory();
 
@@ -153,15 +195,13 @@ class OpenTelemetrySetup
 
     protected function createMetricTransport(Configuration $configuration): TransportInterface
     {
-        $uri = $configuration->uri;
-        $transportFactory = new OtlpHttpTransportFactory();
-        return $transportFactory->create("$uri/v1/metrics", ContentTypes::JSON);
+        return $this->createTransport($configuration, Signals::METRICS, 'metrics');
     }
 
     protected function createMeterProvider(ResourceInfo $resource): MeterProviderInterface
     {
         $metricTransport = $this->createMetricTransport($this->configuration);
-        $metricExporter = new \OpenTelemetry\Contrib\Otlp\MetricExporter($metricTransport);
+        $metricExporter = $this->createMetricExporter($metricTransport);
 
         $reader = new ExportingReader($metricExporter);
 
@@ -169,6 +209,11 @@ class OpenTelemetrySetup
             ->setResource($resource)
             ->addReader($reader)
             ->build();
+    }
+
+    protected function createMetricExporter(TransportInterface $transport): MetricExporterInterface
+    {
+        return new MetricExporter($transport);
     }
 
     /**
