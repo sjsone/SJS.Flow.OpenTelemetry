@@ -39,6 +39,7 @@ class HttpTracingMiddleware implements MiddlewareInterface
             }
             return $response;
         } catch (\Throwable $exception) {
+            $span->setAttribute('http.response.status_code', ExceptionRecorder::httpStatus($exception));
             ExceptionRecorder::recordFailure($span, $exception, httpServer: true);
             $setup->deferEndSpan($span);
             throw $exception;
