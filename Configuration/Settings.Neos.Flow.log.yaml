@@ -4,14 +4,14 @@ Neos:
       psr3:
         'Neos\Flow\Log\PsrLoggerFactory':
           systemLogger:
-            default:
+            otel:
               class: SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend
               options:
                 severityThreshold: "%LOG_NOTICE%"
                 attributes:
                   logger: "systemLogger"
           securityLogger:
-            default:
+            otel:
               class: SJS\Flow\OpenTelemetry\Log\Backend\OpenTelemetryBackend
               options:
                 severityThreshold: "%LOG_NOTICE%"
