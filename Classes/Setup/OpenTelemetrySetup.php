@@ -246,10 +246,36 @@ class OpenTelemetrySetup
 
     public function endSpan(SpanInterface $spanToEnd)
     {
-        $scopeWithSpan = \array_pop($this->scopesWithSpans);
-        if ($scopeWithSpan === null) {
-            throw new \Exception("Could not end span.\nEvery span in the stack already ended.");
+        $index = null;
+        foreach ($this->scopesWithSpans as $key => $entry) {
+            if ($entry['span'] === $spanToEnd) {
+                $index = $key;
+                break;
+            }
         }
+        if ($index === null) {
+            $this->warn('Could not end span: it is no longer in the active span stack.');
+            return;
+        }
+
+        if ($index !== array_key_last($this->scopesWithSpans)) {
+            $this->warn('Closing unfinished child spans before ending their parent.');
+        }
+        while (\count($this->scopesWithSpans) > $index) {
+            ['scope' => $scope, 'span' => $span] = array_pop($this->scopesWithSpans);
+            if ($span !== $spanToEnd) {
+                $span->addEvent('span.forcefullyClosed');
+            }
+            $scope->detach();
+            $span->end();
+            unset($this->deferredSpans[spl_object_id($span)]);
+        }
+    }
+
+    protected function warn(string $message): void
+    {
+        $this->logger->emit((new LogRecord($message))->setSeverityNumber(Severity::WARN)->setSeverityText('WARNING'));
+    }
     /** Keep failed HTTP requests active while Flow logs the exception and renders its error page. */
     public function deferEndSpan(SpanInterface $span): void
     {
