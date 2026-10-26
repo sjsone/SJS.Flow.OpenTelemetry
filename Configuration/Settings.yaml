@@ -7,7 +7,7 @@ SJS:
           commandController: true
           actionController: true
           viewInterfaceRender: true
-          repository: true
+          repository: false
           fusionCacheEvents: true
       setup:
         default:
