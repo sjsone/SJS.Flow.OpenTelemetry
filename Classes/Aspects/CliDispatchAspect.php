@@ -10,6 +10,7 @@ use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
 use SJS\Flow\OpenTelemetry\Tracing\TraceContext;
+use SJS\Flow\OpenTelemetry\Tracing\ExceptionRecorder;
 
 #[Flow\Scope("singleton")]
 #[Flow\Aspect]
@@ -39,9 +40,7 @@ class CliDispatchAspect
             }
             return $result;
         } catch (\Throwable $exception) {
-            $span->recordException($exception);
-            $span->setStatus(StatusCode::STATUS_ERROR);
-            $span->setAttribute('error.type', $exception::class);
+            ExceptionRecorder::recordFailure($span, $exception);
             throw $exception;
         } finally {
             $setup->endSpan($span);

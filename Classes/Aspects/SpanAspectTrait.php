@@ -8,6 +8,7 @@ use Neos\Flow\Annotations as Flow;
 use OpenTelemetry\API\Trace\SpanKind;
 
 use SJS\Flow\OpenTelemetry\Manager\OpenTelemetryManager;
+use SJS\Flow\OpenTelemetry\Tracing\ExceptionRecorder;
 
 trait SpanAspectTrait
 {
@@ -39,7 +40,7 @@ trait SpanAspectTrait
         try {
             $result = $joinPoint->getAdviceChain()->proceed($joinPoint);
         } catch (\Throwable $th) {
-            $span->recordException($th);
+            ExceptionRecorder::recordFailure($span, $th);
             throw $th;
         } finally {
             OpenTelemetryManager::getDefaultSetup()->endSpan($span);

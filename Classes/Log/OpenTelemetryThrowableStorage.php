@@ -5,17 +5,13 @@ declare(strict_types=1);
 namespace SJS\Flow\OpenTelemetry\Log;
 
 use Neos\Flow\Log\PlainTextFormatter;
-use Neos\Flow\Log\ThrowableStorageInterface;
+use Neos\Flow\Log\ThrowableStorage\FileStorage;
 use OpenTelemetry\SDK\Common\Attribute\AttributeValidator;
-use OpenTelemetry\SDK\Trace\Span;
+use OpenTelemetry\API\Trace\Span;
+use SJS\Flow\OpenTelemetry\Tracing\ExceptionRecorder;
 
-class OpenTelemetryThrowableStorage implements ThrowableStorageInterface
+class OpenTelemetryThrowableStorage extends FileStorage
 {
-    public static function createWithOptions(array $options): ThrowableStorageInterface
-    {
-        return new self();
-    }
-
     public function logThrowable(\Throwable $throwable, array $additionalData = []): string
     {
         $span = Span::getCurrent();
@@ -31,23 +27,12 @@ class OpenTelemetryThrowableStorage implements ThrowableStorageInterface
             }
         }
 
-        // todo evaluate to render stacktrace like neos with method arguments and previous exceptions traces
-        $span->recordException(
+        ExceptionRecorder::record(
+            $span,
             $throwable,
-            $prefixedFlowData
+            attributes: $prefixedFlowData
         );
 
-        // NOT ANY PRACTICE WHEN USING OT - adjust flow to not use return value
-        return sprintf('%s - See %s', $throwable->getMessage(), $span->getContext()->getSpanId());
-    }
-
-    public function setRequestInformationRenderer(\Closure $requestInformationRenderer)
-    {
-        return $this;
-    }
-
-    public function setBacktraceRenderer(\Closure $backtraceRenderer)
-    {
-        return $this;
+        return parent::logThrowable($throwable, $additionalData);
     }
 }
