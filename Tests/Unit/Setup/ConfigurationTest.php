@@ -7,6 +7,7 @@ namespace SJS\Flow\OpenTelemetry\Tests\Unit\Setup;
 use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use PHPUnit\Framework\TestCase;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
+use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration\SamplerName;
 
 final class ConfigurationTest extends TestCase
 {
@@ -79,11 +80,16 @@ final class ConfigurationTest extends TestCase
     }
 
     /** @dataProvider sharedConfigurationKeys */
-    public function testRemovedSharedSettingsProduceAnActionableMigrationError(string $key): void
+    public function testSharedSettingsDoNotOverrideSignalConfiguration(string $key): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Configure traces.transport, logs.transport and metrics.transport');
-        Configuration::fromArray([$key => [], 'service' => ['name' => 'test']]);
+        $configuration = Configuration::fromArray([
+            $key => [],
+            'traces' => ['transport' => ['uri' => 'https://traces.test/custom']],
+            'service' => ['name' => 'test'],
+        ]);
+        self::assertSame('https://traces.test/custom', $configuration->traces->transport->uri);
+        self::assertSame('http://localhost:4318/v1/logs', $configuration->logs->transport->uri);
+        self::assertSame('http://localhost:4318/v1/metrics', $configuration->metrics->transport->uri);
     }
 
     public static function sharedConfigurationKeys(): iterable
@@ -111,6 +117,60 @@ final class ConfigurationTest extends TestCase
             yield "$signal protocol instead of MIME type" => [$signal, 'http/protobuf'];
             yield "$signal invalid type" => [$signal, false];
         }
+    }
+
+    /** @dataProvider invalidTransportLimits */
+    public function testInvalidTransportLimitsAreRejected(string $key, mixed $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('transport.' . $key);
+        Configuration::fromArray([
+            'traces' => ['transport' => [$key => $value]],
+            'service' => ['name' => 'test'],
+        ]);
+    }
+
+    public static function invalidTransportLimits(): iterable
+    {
+        foreach ([-1, 0, INF, NAN, false, 'invalid'] as $value) {
+            yield ['timeout', $value];
+        }
+        foreach ([-1, 1.5, false, 'invalid'] as $value) {
+            yield ['maxRetries', $value];
+        }
+    }
+
+    /** @dataProvider invalidSamplers */
+    public function testInvalidSamplersAreRejected(array $sampler): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('traces.sampler.');
+        Configuration::fromArray(['traces' => ['sampler' => $sampler], 'service' => ['name' => 'test']]);
+    }
+
+    public static function invalidSamplers(): iterable
+    {
+        yield [['name' => 'unknown']];
+        yield [['name' => true]];
+        foreach ([-0.1, 1.1, INF, NAN, true, 'invalid'] as $arg) {
+            yield [['name' => 'traceidratio', 'arg' => $arg]];
+        }
+    }
+
+    /** @dataProvider defaultSamplerSettings */
+    public function testMissingSamplerValuesDefaultToAlwaysOn(array $sampler): void
+    {
+        $configuration = Configuration::fromArray(['traces' => ['sampler' => $sampler], 'service' => ['name' => 'test']]);
+        self::assertSame(SamplerName::AlwaysOn, $configuration->traces->sampler->name);
+        self::assertSame(1.0, $configuration->traces->sampler->arg);
+    }
+
+    public static function defaultSamplerSettings(): iterable
+    {
+        yield 'omitted' => [[]];
+        yield 'unset Flow environment variables' => [['name' => false, 'arg' => false]];
+        yield 'empty environment variables' => [['name' => '', 'arg' => '']];
+        yield 'explicit nulls' => [['name' => null, 'arg' => null]];
     }
 
     private function env(string $name, string $value): void

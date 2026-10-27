@@ -136,7 +136,7 @@ final class EntrySpanTest extends TestCase
         self::assertSame('503', $entry->getAttributes()->get('error.type'));
     }
 
-    public function testExceptionIsRecordedOnceWhileEveryFailedOperationGetsErrorStatus(): void
+    public function testExceptionFailsOnlyItsOriginAndRootAndIsRecordedOnce(): void
     {
         $exception = new \RuntimeException('failure');
         $root = $this->setup->startNewSpanOfKind('root', SpanKind::KIND_SERVER);
@@ -152,12 +152,13 @@ final class EntrySpanTest extends TestCase
         self::assertCount(1, $originData->getEvents());
         self::assertArrayHasKey('exception.stacktrace', $originData->getEvents()[0]->getAttributes()->toArray());
         self::assertSame(StatusCode::STATUS_ERROR, $originData->getStatus()->getCode());
-        self::assertSame(StatusCode::STATUS_ERROR, $middleData->getStatus()->getCode());
+        self::assertSame(StatusCode::STATUS_UNSET, $middleData->getStatus()->getCode());
+        self::assertNull($middleData->getAttributes()->get('error.type'));
         self::assertSame(StatusCode::STATUS_ERROR, $rootData->getStatus()->getCode());
         self::assertSame('failure', $rootData->getStatus()->getDescription());
         self::assertCount(0, $middleData->getEvents());
         self::assertCount(0, $rootData->getEvents());
-        foreach ([$originData, $middleData, $rootData] as $span) {
+        foreach ([$originData, $rootData] as $span) {
             self::assertSame(\RuntimeException::class, $span->getAttributes()->get('error.type'));
             self::assertSame('failure', $span->getStatus()->getDescription());
         }
@@ -184,7 +185,7 @@ final class EntrySpanTest extends TestCase
     }
 
     /** @dataProvider failingChildOperations */
-    public function test4xxExemptionAppliesOnlyToTheHttpServer(int $status, int $childKind): void
+    public function test4xxExemptionAppliesToAllSpans(int $status, int $childKind): void
     {
         $exception = new class ('request failed', $status) extends \RuntimeException implements WithHttpStatusInterface {
             public function getStatusCode(): int { return $this->getCode(); }
@@ -213,8 +214,8 @@ final class EntrySpanTest extends TestCase
         $this->shutdown($this->setup);
         [$child, $server] = $this->exporter->getSpans();
         self::assertSame($childKind, $child->getKind());
-        self::assertSame(StatusCode::STATUS_ERROR, $child->getStatus()->getCode());
-        self::assertSame($exception::class, $child->getAttributes()->get('error.type'));
+        self::assertSame(StatusCode::STATUS_UNSET, $child->getStatus()->getCode());
+        self::assertNull($child->getAttributes()->get('error.type'));
         self::assertCount(1, $child->getEvents());
         self::assertSame(SpanKind::KIND_SERVER, $server->getKind());
         self::assertSame(StatusCode::STATUS_UNSET, $server->getStatus()->getCode());
@@ -438,23 +439,48 @@ final class EntrySpanTest extends TestCase
         self::assertSame('00-0123456789abcdef0123456789abcdef-0123456789abcdef-01', getenv('TRACEPARENT'));
     }
 
-    public function testCliExceptionClosesTheEntry(): void
+    public function testCliExceptionKeepsTheEntryActiveThroughExceptionLogging(): void
     {
         $exception = new \RuntimeException('command failure');
-        $joinPoint = $this->cliJoinPoint(new CliResponse(), static function () use ($exception) {
-            throw $exception; });
+        $joinPoint = $this->cliJoinPoint(new CliResponse(), function () use ($exception) {
+            $origin = $this->setup->startNewSpanOfKind('command', SpanKind::KIND_INTERNAL);
+            ExceptionRecorder::recordFailure($origin, $exception);
+            $this->setup->endSpan($origin);
+            throw $exception;
+        });
         try {
             (new CliDispatchAspect())->traceCliDispatcherDispatch($joinPoint);
             self::fail('The aspect must propagate the exception.');
         } catch (\RuntimeException $caught) {
             self::assertSame($exception, $caught);
         }
-        [$entry] = $this->exporter->getSpans();
+        // The dispatcher must leave the command root active for Flow's exception handler.
+        self::assertCount(1, $this->exporter->getSpans());
+        $active = Span::getCurrent();
+        self::assertTrue($active->isRecording());
+        self::assertStringContainsString($active->getContext()->getSpanId(), getenv('TRACEPARENT'));
+
+        $logs = new \OpenTelemetry\SDK\Logs\Exporter\InMemoryExporter();
+        $loggerProvider = \OpenTelemetry\SDK\Logs\LoggerProvider::builder()
+            ->addLogRecordProcessor(new \OpenTelemetry\SDK\Logs\Processor\SimpleLogRecordProcessor($logs))->build();
+        $loggerProvider->getLogger('test')->emit((new \OpenTelemetry\API\Logs\LogRecord('command failure'))
+            ->setSeverityNumber(\OpenTelemetry\API\Logs\Severity::FATAL));
+        self::assertSame($active->getContext()->getSpanId(), $logs->getStorage()[0]->getSpanContext()->getSpanId());
+        self::assertSame($active->getContext()->getTraceId(), $logs->getStorage()[0]->getSpanContext()->getTraceId());
+        $loggerProvider->shutdown();
+
+        $this->shutdown($this->setup);
+        [$origin, $entry] = $this->exporter->getSpans();
+        self::assertCount(1, $origin->getEvents());
+        self::assertSame([], $entry->getEvents());
+        self::assertSame(1, $entry->getAttributes()->get('process.exit.code'));
         self::assertSame(StatusCode::STATUS_ERROR, $entry->getStatus()->getCode());
+        self::assertTrue($entry->hasEnded());
+        self::assertFalse(Span::getCurrent()->getContext()->isValid());
         self::assertFalse(getenv('TRACEPARENT'));
     }
 
-    public function testCliExceptionWithHttp4xxStatusStillFailsTheEntry(): void
+    public function testCliExceptionWithHttp4xxStatusHasNoErrorStatus(): void
     {
         $exception = new class ('command failure') extends \RuntimeException implements WithHttpStatusInterface {
             public function getStatusCode(): int { return 404; }
@@ -468,10 +494,12 @@ final class EntrySpanTest extends TestCase
         } catch (\RuntimeException $caught) {
             self::assertSame($exception, $caught);
         }
+        $this->shutdown($this->setup);
         [$entry] = $this->exporter->getSpans();
         self::assertSame(SpanKind::KIND_INTERNAL, $entry->getKind());
-        self::assertSame(StatusCode::STATUS_ERROR, $entry->getStatus()->getCode());
-        self::assertSame($exception::class, $entry->getAttributes()->get('error.type'));
+        self::assertSame(1, $entry->getAttributes()->get('process.exit.code'));
+        self::assertSame(StatusCode::STATUS_UNSET, $entry->getStatus()->getCode());
+        self::assertNull($entry->getAttributes()->get('error.type'));
     }
 
     public function testCompiletimeLifecycleIgnoresRuntimeAndClosesOnlyOnce(): void
