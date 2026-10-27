@@ -29,7 +29,7 @@ final class ExceptionRecorder
         }
 
         $emitLogs = \in_array($mode, ['logs', 'logs/dup'], true);
-        if (!$span->isRecording() || !$span->getContext()->isValid()) {
+        if (!$emitLogs && (!$span->isRecording() || !$span->getContext()->isValid())) {
             return;
         }
 
