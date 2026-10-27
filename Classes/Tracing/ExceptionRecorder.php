@@ -15,6 +15,9 @@ final class ExceptionRecorder
     /** @var \WeakMap<\Throwable, array<string, true>>|null */
     private static ?\WeakMap $recorded = null;
 
+    /** @var \WeakMap<\Throwable, array<string, string>>|null Origin span ID for each trace. */
+    private static ?\WeakMap $failed = null;
+
     public static function httpStatus(\Throwable $exception): int
     {
         return $exception instanceof WithHttpStatusInterface ? $exception->getStatusCode() : 500;
@@ -36,6 +39,19 @@ final class ExceptionRecorder
         self::$recorded ??= new \WeakMap();
         $traceId = $span->getContext()->getTraceId();
         $traces = self::$recorded[$exception] ?? [];
+
+        // Flow may log an uncaught exception after its CLI entry span has ended.
+        if (!$span->getContext()->isValid() && $traces !== []) {
+            return;
+        }
+
+        if (isset($traces[$traceId])) {
+            return;
+        }
+
+        $traces[$traceId] = true;
+        self::$recorded[$exception] = $traces;
+
         if ($mode !== 'logs') {
             self::recordExceptionIntoSpan($span, $exception, $attributes);
         }
