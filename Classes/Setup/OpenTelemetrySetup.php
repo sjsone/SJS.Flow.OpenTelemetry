@@ -26,8 +26,11 @@ use OpenTelemetry\SDK\Logs\Processor\BatchLogRecordProcessor;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Sdk;
-use OpenTelemetry\SDK\Trace\SamplerFactory;
 use OpenTelemetry\SDK\Trace\SamplerInterface;
+use OpenTelemetry\SDK\Trace\Sampler\AlwaysOffSampler;
+use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
+use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
 use OpenTelemetry\SDK\Trace\SpanExporterInterface;
 use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
 use OpenTelemetry\SDK\Trace\TracerProvider;
@@ -46,6 +49,7 @@ use OpenTelemetry\SDK\Metrics\MeterProviderInterface;
 use OpenTelemetry\SDK\Metrics\MetricExporterInterface;
 use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration;
+use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration\SamplerName;
 use SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup\Configuration\Transport;
 use SJS\Flow\OpenTelemetry\Tracing\TraceContext;
 use OpenTelemetry\API\Trace\SpanKind;
@@ -139,7 +143,9 @@ class OpenTelemetrySetup
         return (new OtlpHttpTransportFactory())->create(
             $configuration->uri,
             $configuration->contentType,
-            array_change_key_case($configuration->headers) + array_change_key_case(OtlpUtil::getHeaders($signal))
+            array_change_key_case($configuration->headers) + array_change_key_case(OtlpUtil::getHeaders($signal)),
+            timeout: $configuration->timeout,
+            maxRetries: $configuration->maxRetries
         );
     }
 
@@ -150,7 +156,15 @@ class OpenTelemetrySetup
 
     protected function createSampler(): SamplerInterface
     {
-        return (new SamplerFactory())->create();
+        $sampler = $this->configuration->traces->sampler;
+        return match ($sampler->name) {
+            SamplerName::AlwaysOn => new AlwaysOnSampler(),
+            SamplerName::AlwaysOff => new AlwaysOffSampler(),
+            SamplerName::ParentBasedAlwaysOn => new ParentBased(new AlwaysOnSampler()),
+            SamplerName::ParentBasedAlwaysOff => new ParentBased(new AlwaysOffSampler()),
+            SamplerName::TraceIdRatio => new TraceIdRatioBasedSampler($sampler->arg),
+            SamplerName::ParentBasedTraceIdRatio => new ParentBased(new TraceIdRatioBasedSampler($sampler->arg)),
+        };
     }
 
     protected function createTracerProvider(SpanExporterInterface $exporter, ResourceInfo $resource): TracerProviderInterface
@@ -272,7 +286,7 @@ class OpenTelemetrySetup
         $this->logger->emit((new LogRecord($message))->setSeverityNumber(Severity::WARN)->setSeverityText('WARNING'));
     }
 
-    /** Keep failed HTTP requests active while Flow logs the exception and renders its error page. */
+    /** Keep failed HTTP requests and CLI commands active through Flow's exception handler. */
     public function deferEndSpan(SpanInterface $span): void
     {
         $this->deferredSpans[spl_object_id($span)] = true;

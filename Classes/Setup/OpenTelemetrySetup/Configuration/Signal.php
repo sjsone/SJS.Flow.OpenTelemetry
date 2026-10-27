@@ -9,12 +9,15 @@ use Neos\Flow\Annotations as Flow;
 #[Flow\Proxy(enabled: false)]
 class Signal
 {
-    protected function __construct(public readonly Transport $transport)
+    protected function __construct(public readonly Transport $transport, public readonly Sampler $sampler)
     {
     }
 
     public static function fromArray(array $source, string $signal): self
     {
-        return new self(Transport::fromArray($source['transport'] ?? [], $signal));
+        return new self(
+            Transport::fromArray($source['transport'] ?? [], $signal),
+            Sampler::fromArray($source['sampler'] ?? [])
+        );
     }
 }

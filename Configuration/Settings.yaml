@@ -14,6 +14,10 @@ SJS:
           class: SJS\Flow\OpenTelemetry\Setup\OpenTelemetrySetup
           environment: "%env:OTEL_DEPLOYMENT_ENVIRONMENT%"
           traces:
+            sampler:
+              # Defaults to always_on and 1.0 when the environment variables are unset
+              name: "%env:OTEL_TRACES_SAMPLER%"
+              arg: "%env:OTEL_TRACES_SAMPLER_ARG%"
             transport:
               uri: "%env:OTEL_EXPORTER_OTLP_TRACES_ENDPOINT%"
               contentType: application/x-protobuf
@@ -25,11 +29,15 @@ SJS:
               uri: "%env:OTEL_EXPORTER_OTLP_LOGS_ENDPOINT%"
               contentType: application/x-protobuf
               headers: []
+              timeout: 10.0
+              maxRetries: 3
           metrics:
             transport:
               uri: "%env:OTEL_EXPORTER_OTLP_METRICS_ENDPOINT%"
               contentType: application/x-protobuf
               headers: []
+              timeout: 10.0
+              maxRetries: 3
           service:
             name: "%env:OTEL_SERVICE_NAME%"
             version: "%env:OTEL_SERVICE_VERSION%"
