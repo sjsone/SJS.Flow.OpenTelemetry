@@ -6,6 +6,8 @@ namespace SJS\Flow\OpenTelemetry\Tracing;
 
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Error\WithHttpStatusInterface;
+use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Logs\Severity;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\Context\Context;
