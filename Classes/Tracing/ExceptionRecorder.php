@@ -65,16 +65,28 @@ final class ExceptionRecorder
                 ->emit();
         }
     }
+
+    /** Mark the origin and root spans as failed, leaving propagating operations unset. */
+    public static function recordFailure(SpanInterface $span, \Throwable $exception, bool $httpServer = false, bool $root = false): void
+    {
+        self::record($span, $exception);
         if (!$span->isRecording() || !$span->getContext()->isValid()) {
             return;
         }
-        self::record($span, $exception);
 
-        if ($httpServer) {
-            $status = self::httpStatus($exception);
-            if ($status >= 400 && $status < 500) {
-                return;
-            }
+        self::$failed ??= new \WeakMap();
+        $context = $span->getContext();
+        $origins = self::$failed[$exception] ?? [];
+        $origins[$context->getTraceId()] ??= $context->getSpanId();
+        self::$failed[$exception] = $origins;
+
+        if ($origins[$context->getTraceId()] !== $context->getSpanId() && !$root && !$httpServer) {
+            return;
+        }
+
+        $status = self::httpStatus($exception);
+        if ($status >= 400 && $status < 500) {
+            return;
         }
 
         $span->setAttribute('error.type', $exception::class);

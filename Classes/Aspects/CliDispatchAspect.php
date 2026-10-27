@@ -40,7 +40,7 @@ class CliDispatchAspect
             }
             return $result;
         } catch (\Throwable $exception) {
-            ExceptionRecorder::recordFailure($span, $exception);
+            ExceptionRecorder::recordFailure($span, $exception, root: true);
             throw $exception;
         } finally {
             $setup->endSpan($span);
