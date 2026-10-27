@@ -18,6 +18,8 @@ SJS:
               uri: "%env:OTEL_EXPORTER_OTLP_TRACES_ENDPOINT%"
               contentType: application/x-protobuf
               headers: []
+              timeout: 10.0
+              maxRetries: 3
           logs:
             transport:
               uri: "%env:OTEL_EXPORTER_OTLP_LOGS_ENDPOINT%"

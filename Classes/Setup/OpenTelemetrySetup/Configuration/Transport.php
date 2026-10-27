@@ -19,6 +19,8 @@ class Transport
         public readonly string $uri,
         public readonly string $contentType,
         public readonly array $headers,
+        public readonly float $timeout,
+        public readonly int $maxRetries,
     ) {
     }
 
@@ -34,10 +36,21 @@ class Transport
             $uri = self::resolveEndpoint($signal);
         }
 
+        $timeout = $source['timeout'] ?? 10.0;
+        if (!is_numeric($timeout) || !is_finite((float) $timeout) || $timeout <= 0) {
+            throw new \InvalidArgumentException('OTLP transport.timeout must be a positive number of seconds');
+        }
+        $maxRetries = $source['maxRetries'] ?? 3;
+        if (!is_int($maxRetries) || $maxRetries < 0) {
+            throw new \InvalidArgumentException('OTLP transport.maxRetries must be a non-negative integer');
+        }
+
         return new self(
             uri: $uri,
             contentType: $contentType,
             headers: $source['headers'] ?? [],
+            timeout: (float) $timeout,
+            maxRetries: $maxRetries,
         );
     }
 
