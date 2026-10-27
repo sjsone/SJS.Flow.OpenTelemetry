@@ -32,6 +32,7 @@ class CliDispatchAspect
             'process.executable.name' => basename(PHP_BINARY)
         ], TraceContext::extractFromEnvironment());
 
+        $failed = false;
         try {
             $result = $joinPoint->getAdviceChain()->proceed($joinPoint);
             $span->setAttribute('process.exit.code', $response->getExitCode());
@@ -40,11 +41,16 @@ class CliDispatchAspect
             }
             return $result;
         } catch (\Throwable $exception) {
+            $failed = true;
+            $span->setAttribute('process.exit.code', 1);
             ExceptionRecorder::recordFailure($span, $exception, root: true);
+            $setup->deferEndSpan($span);
             throw $exception;
         } finally {
-            $setup->endSpan($span);
-            $setup->flushMetrics();
+            if (!$failed) {
+                $setup->endSpan($span);
+                $setup->flushMetrics();
+            }
         }
     }
 }
