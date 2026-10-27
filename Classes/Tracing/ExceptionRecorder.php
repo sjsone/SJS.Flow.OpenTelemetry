@@ -23,6 +23,12 @@ final class ExceptionRecorder
     /** Record exception details once per trace, independently of the operation's status. */
     public static function record(SpanInterface $span, \Throwable $exception, iterable $attributes = []): void
     {
+        $mode = getenv('OTEL_SEMCONV_EXCEPTION_SIGNAL_OPT_IN');
+        if ($mode === false) {
+            $mode = $_SERVER['OTEL_SEMCONV_EXCEPTION_SIGNAL_OPT_IN'] ?? '';
+        }
+
+        $emitLogs = \in_array($mode, ['logs', 'logs/dup'], true);
         if (!$span->isRecording() || !$span->getContext()->isValid()) {
             return;
         }
@@ -30,16 +36,35 @@ final class ExceptionRecorder
         self::$recorded ??= new \WeakMap();
         $traceId = $span->getContext()->getTraceId();
         $traces = self::$recorded[$exception] ?? [];
-        if (!isset($traces[$traceId])) {
-            $traces[$traceId] = true;
-            self::$recorded[$exception] = $traces;
-            $span->recordException($exception, $attributes);
+        if ($mode !== 'logs') {
+            self::recordExceptionIntoSpan($span, $exception, $attributes);
+        }
+        if ($emitLogs) {
+            self::EXCEPTION_SIGNAL_OPT_IN_recordExceptionIntoLog($span, $exception, $attributes);
         }
     }
 
-    /** Call when an exception causes the instrumented operation to fail. */
-    public static function recordFailure(SpanInterface $span, \Throwable $exception, bool $httpServer = false): void
+    protected static function recordExceptionIntoSpan(SpanInterface $span, \Throwable $exception, iterable $attributes)
     {
+        $span->recordException($exception, $attributes);
+    }
+
+    protected static function EXCEPTION_SIGNAL_OPT_IN_recordExceptionIntoLog(SpanInterface $span, \Throwable $exception, iterable $attributes)
+    {
+        $context = $span->storeInContext(Context::getCurrent());
+        $logger = Globals::loggerProvider()->getLogger('SJS.Flow.OpenTelemetry');
+        if ($logger->isEnabled($context, Severity::ERROR->value, 'exception')) {
+            $logger->logRecordBuilder()
+                ->setContext($context)
+                ->setEventName('exception')
+                ->setBody($exception->getMessage())
+                ->setAttributes($attributes)
+                ->setException($exception)
+                ->setSeverityNumber(Severity::ERROR)
+                ->setSeverityText('ERROR')
+                ->emit();
+        }
+    }
         if (!$span->isRecording() || !$span->getContext()->isValid()) {
             return;
         }
